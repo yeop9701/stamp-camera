@@ -107,11 +107,14 @@ button { font: inherit; color: inherit; }
 }
 .sheet-head h2 { margin: 0; font-size: 18px; }
 .sheet-head small { color: var(--muted); font-weight: normal; font-size: 13px; }
-.sheet-body { overflow-y: auto; padding: 8px 16px calc(env(safe-area-inset-bottom) + 20px); }
+.sheet-body { overflow-y: auto; overflow-x: hidden; padding: 8px 16px calc(env(safe-area-inset-bottom) + 20px); }
 fieldset { border: 0; border-bottom: 1px solid var(--line); margin: 0; padding: 12px 0 14px; }
 legend { padding: 0; font-weight: 700; color: var(--accent); font-size: 14px; margin-bottom: 8px; }
 label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); margin: 6px 0; flex: 1; min-width: 0; }
-.row { display: flex; gap: 12px; align-items: flex-end; clear: both; }
+/* 두 칸짜리 줄: 폭이 모자라면(좁은 화면·큰 글자) 위아래로 내려간다 */
+.row { display: flex; flex-wrap: wrap; gap: 0 12px; align-items: flex-end; }
+.row > label { flex: 1 1 11em; }
+.row > label.check, .row > label.color { flex: 1 1 auto; }
 .row > .btn { margin-bottom: 6px; white-space: nowrap; }
 input[type=number], input[type=text], select {
   width: 100%; font: inherit; font-size: 16px; color: var(--text); background: var(--panel-2);
@@ -121,14 +124,14 @@ label.check { flex-direction: row; align-items: center; gap: 8px; color: var(--t
 label.check input { width: 20px; height: 20px; accent-color: var(--accent); }
 label.color { flex-direction: row; align-items: center; justify-content: flex-end; gap: 8px; }
 input[type=color] { width: 44px; height: 32px; border: 1px solid var(--line); border-radius: 6px; background: none; padding: 2px; }
-label.range { color: var(--text); font-size: 14px; display: block; clear: both; }
+label.range { color: var(--text); font-size: 14px; display: block; }
 label.range output { color: var(--accent); float: right; }
 label.range input { width: 100%; accent-color: var(--accent); margin-top: 6px; }
 .hint { color: var(--muted); font-size: 12px; margin: 4px 0; line-height: 1.5; word-break: break-all; }
 .hint b { color: var(--text); font-weight: normal; }
 .center { text-align: center; }
 .grid9 {
-  clear: both; display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; width: 150px; aspect-ratio: 4 / 3;
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; width: 150px; aspect-ratio: 4 / 3;
   padding: 4px; background: var(--panel-2); border-radius: 8px; margin-bottom: 8px;
 }
 .grid9 button { border: 1px solid var(--line); background: #3a3a3c; border-radius: 4px; cursor: pointer; padding: 0; }

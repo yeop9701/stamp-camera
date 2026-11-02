@@ -7,7 +7,7 @@ import { addShot, deleteShot, clearShots, getShot, listShots, allShotsWithBlobs,
 import { downloadBlob, shareBlob, canvasToBlob } from './save.js';
 import { makeZip, uniqueNames } from './zip.js';
 
-const APP_VERSION = '1.2.0';
+const APP_VERSION = '1.2.1';
 const $ = (id) => document.getElementById(id);
 
 let s = loadSettings();
@@ -338,7 +338,7 @@ $('btnUndo').onclick = async () => {
 /* ── 설정 패널 ──────────────────────────────────── */
 const sel = $('s-dateFormat');
 const sample = new Date();
-for (const f of DATE_FORMATS) sel.add(new Option(`${formatDate(sample, f)}  (${f})`, f));
+for (const f of DATE_FORMATS) sel.add(new Option(formatDate(sample, f), f));
 
 const fields = ['numberOn', 'current', 'start', 'step', 'pad', 'prefix', 'suffix', 'margin', 'size', 'bold', 'color',
   'outline', 'outlineWidth', 'outlineColor', 'box', 'boxColor', 'boxOpacity', 'dateOn', 'dateFormat',

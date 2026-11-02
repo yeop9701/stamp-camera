@@ -113,6 +113,16 @@ ok(/^\d{8}_A-007\.jpg$/.test(await text('#fileNamePreview')), '파일명 미리�
 const squeezed = await ev(`[...document.querySelectorAll('#settingsSheet label')]
   .filter((l) => !l.closest('[hidden]') && l.getBoundingClientRect().width < 100).map((l) => l.textContent.trim().slice(0, 15))`);
 eq(squeezed, [], '설정 항목 중 찌그러진 칸 없음');
+for (const w of [320, 390]) {
+  await cdp.send('Emulation.setDeviceMetricsOverride', { width: w, height: 844, deviceScaleFactor: 2, mobile: true });
+  await sleep(200);
+  const over = await ev(`(() => { const b = document.querySelector('#settingsSheet .sheet-body'), lim = b.getBoundingClientRect().right;
+    return [...b.querySelectorAll('*')].filter((e) => !e.closest('[hidden]') && e.getBoundingClientRect().right > lim + 0.5)
+      .map((e) => e.tagName + ' ' + (e.textContent || '').trim().slice(0, 12)); })()`);
+  eq(over, [], `${w}px 화면에서 설정이 옆으로 넘치지 않음`);
+}
+const twoCol = await ev(`(() => { const r = document.getElementById('s-start').getBoundingClientRect(), q = document.getElementById('s-step').getBoundingClientRect(); return Math.abs(r.top - q.top) < 2; })()`);
+ok(twoCol, '보통 글자 크기에서는 두 칸 나란히');
 ok(await ev(`document.getElementById('fileNameCustom').hidden`), '파일명: 목록에서 고른 상태면 직접 입력 칸 숨김');
 await setVal('fileNamePreset', '{no}_{date}');
 ok(/^A-007_\d{8}\.jpg$/.test(await text('#fileNamePreview')), '파일명 "번호_날짜" 선택 반영', await text('#fileNamePreview'));
