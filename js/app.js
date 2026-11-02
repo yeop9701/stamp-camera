@@ -7,7 +7,7 @@ import { addShot, deleteShot, clearShots, getShot, listShots, allShotsWithBlobs,
 import { downloadBlob, shareBlob, shareFiles, canvasToBlob } from './save.js';
 import { makeZip, uniqueNames } from './zip.js';
 
-const APP_VERSION = '1.4.0';
+const APP_VERSION = '1.4.1';
 const $ = (id) => document.getElementById(id);
 
 let s = loadSettings();
@@ -119,13 +119,34 @@ async function startCamera() {
   }
 }
 
-function updateResInfo() {
+// 설정 › 카메라 안내: 지금 설정(고화질 켬/끔)으로 찍힐 해상도 + 최근 저장한 사진의 실제 크기·용량
+let lastSaved = null; // { w, h, size, quality }
+let resInfoSeq = 0;
+async function updateResInfo() {
   const v = $('video');
-  if (!v.videoWidth) return ($('resInfo').textContent = '');
-  const { w, h } = crop43(v.videoWidth, v.videoHeight);
-  const mp = ((w * h) / 1e6).toFixed(1);
-  $('resInfo').textContent = `지금 저장 해상도: ${w}×${h} (약 ${mp}MP, ${w >= h ? '4:3' : '3:4'})`;
+  const seq = ++resInfoSeq;
+  const res = $('resInfo');
+  const last = $('lastSavedInfo');
+  last.textContent = lastSaved
+    ? `최근 저장: ${lastSaved.w}×${lastSaved.h} · ${fmtSize(lastSaved.size)} (품질 ${lastSaved.quality})`
+    : '';
+  if (!v.videoWidth) return (res.textContent = '');
+  const fmt = (w, h) => `${w}×${h} (약 ${((w * h) / 1e6).toFixed(1)}MP, ${w >= h ? '4:3' : '3:4'})`;
+  const video = crop43(v.videoWidth, v.videoHeight);
+  if (!s.hiRes) return (res.textContent = `지금 저장 해상도: ${fmt(video.w, video.h)}`);
+  res.textContent = '지금 저장 해상도: 고화질 확인 중…';
+  const p = await camera.photoSize();
+  if (seq !== resInfoSeq) return; // 그새 다시 불렸으면 버림
+  if (p && p.width * p.height > v.videoWidth * v.videoHeight) {
+    const c = crop43(p.width, p.height);
+    res.textContent = `지금 저장 해상도: ${fmt(c.w, c.h)} — 고화질`;
+  } else if (p) {
+    res.textContent = `지금 저장 해상도: ${fmt(video.w, video.h)} — 이 기기는 고화질(${p.width}×${p.height})이 더 작아서 지금 화질 그대로 찍습니다`;
+  } else {
+    res.textContent = `지금 저장 해상도: ${fmt(video.w, video.h)} — 이 기기는 고화질 촬영을 지원하지 않아 그대로입니다`;
+  }
 }
+const fmtSize = (b) => (b >= 1048576 ? (b / 1048576).toFixed(1) + 'MB' : Math.round(b / 1024) + 'KB');
 
 function showFallback(msg) {
   $('camError').textContent = msg;
@@ -234,6 +255,8 @@ async function storeStamped(canvas, date, { allowShare = true } = {}) {
     toast('저장 취소 — 번호는 그대로입니다.');
     return false;
   }
+  lastSaved = { w: canvas.width, h: canvas.height, size: blob.size, quality: s.quality };
+  updateResInfo();
   undoStack.push({ number: s.current, listId, numberText });
   if (undoStack.length > 50) undoStack.shift();
   s.current = nextValue(s.current, s);
@@ -402,6 +425,7 @@ for (const k of fields) {
     syncDisabled();
     updateNext();
     renderOverlay();
+    if (k === 'hiRes') updateResInfo();
   };
   el.addEventListener('input', handler);
   el.addEventListener('change', () => {

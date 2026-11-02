@@ -3,7 +3,7 @@
 // GitHub Pages는 파일을 10분간 브라우저 캐시에 두라고(max-age=600) 보내므로,
 // 받을 때 브라우저 캐시를 건너뛰어야(cache: 'no-cache' / 'reload') 옛 파일이 새 버전에 섞이지 않는다.
 // 앱 파일을 바꾸면 VERSION을 올린다.
-const VERSION = 'v1.4.0';
+const VERSION = 'v1.4.1';
 const CACHE = 'stampcam-' + VERSION;
 const NETWORK_TIMEOUT_MS = 4000;
 const FILES = [

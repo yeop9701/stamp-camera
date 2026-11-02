@@ -69,6 +69,34 @@ export class Camera {
     }
   }
 
+  // 고화질 촬영(takePhoto)의 최대 크기 (센서 방향 그대로). 모르면 null
+  async photoMax() {
+    if (!this.track || !('ImageCapture' in window)) return null;
+    try {
+      const c = await new ImageCapture(this.track).getPhotoCapabilities();
+      const w = c.imageWidth && c.imageWidth.max;
+      const h = c.imageHeight && c.imageHeight.max;
+      return w && h ? { width: w, height: h } : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // 고화질 촬영으로 찍힐 크기 — 미리보기와 같은 가로/세로 방향으로
+  async photoSize() {
+    const p = await this.photoMax();
+    if (!p) return null;
+    const v = this.video;
+    const turned = v.videoWidth && (v.videoHeight > v.videoWidth) !== (p.height > p.width);
+    return turned ? { width: p.height, height: p.width } : p;
+  }
+
+  // 고화질이 미리보기 영상보다 실제로 큰가 (작거나 같으면 쓸 이유가 없다)
+  async hiResHelps() {
+    const p = await this.photoMax();
+    return !!p && p.width * p.height > this.video.videoWidth * this.video.videoHeight;
+  }
+
   stop() {
     if (this.stream) {
       this.stream.getTracks().forEach((t) => t.stop());
@@ -87,10 +115,14 @@ export class Camera {
   async capture(hiRes) {
     const v = this.video;
     if (!this.stream || !v.videoWidth) throw new Error('카메라가 준비되지 않았습니다.');
-    if (hiRes && 'ImageCapture' in window) {
+    // 고화질이 영상보다 작은 기기(일부 기기·가짜 카메라)는 영상 프레임이 더 낫다
+    const max = hiRes ? await this.photoMax() : null;
+    if (max && max.width * max.height > v.videoWidth * v.videoHeight) {
       try {
         const track = this.stream.getVideoTracks()[0];
-        const blob = await new ImageCapture(track).takePhoto();
+        // 최대 크기를 달라고 명시 (기본값은 기기마다 작게 나오기도 함)
+        const ic = new ImageCapture(track);
+        const blob = await ic.takePhoto({ imageWidth: max.width, imageHeight: max.height }).catch(() => ic.takePhoto());
         let bmp = await createImageBitmap(blob, { imageOrientation: 'from-image' });
         // 일부 기기는 센서 방향 그대로 돌려준다 → 미리보기와 가로/세로가 다르면 돌려 맞춘다
         const vPortrait = v.videoHeight > v.videoWidth;

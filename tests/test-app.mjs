@@ -100,6 +100,23 @@ const dims = await ev(`(async () => { const v = document.getElementById('video')
 const want = dims.cam[0] >= dims.cam[1] ? [Math.round(dims.cam[1] * 4 / 3), dims.cam[1]] : [dims.cam[0], Math.round(dims.cam[0] * 4 / 3)];
 eq(dims.img, want, `저장 이미지는 4:3 (카메라 ${dims.cam.join('×')} → ${want.join('×')})`);
 eq(dims.no, '001', '목록 항목 번호 001');
+ok((await text('#lastSavedInfo')).startsWith(`최근 저장: ${want.join('×')}`), '설정에 최근 저장 크기·용량 표시', await text('#lastSavedInfo'));
+const resOff = await text('#resInfo');
+await setVal('s-hiRes', true);
+ok(await waitFor(`!document.getElementById('resInfo').textContent.includes('확인 중')`), '고화질 해상도 확인 끝남');
+const resOn = await text('#resInfo');
+ok(resOn !== resOff && /고화질/.test(resOn), '고화질 켜면 해상도 안내가 바뀜', { resOff, resOn });
+const nHi = await text('#nextText');
+await tap('#btnShutter');
+ok(await waitFor(`document.getElementById('nextText').textContent !== ${JSON.stringify(nHi)}`), '고화질 켠 채 촬영');
+await sleep(300);
+const hiDims = (await text('#lastSavedInfo')).match(/(\d+)×(\d+)/);
+ok(hiDims && hiDims[1] * hiDims[2] >= want[0] * want[1], '고화질이 더 작은 기기에서도 작게 찍히지 않음', await text('#lastSavedInfo'));
+await tap('#btnUndo'); // 이 검사용 사진은 되돌려 뒤 검사 번호를 맞춘다
+await sleep(500);
+console.log('       끔:', resOff, '\n       켬:', resOn);
+await setVal('s-hiRes', false);
+eq(await text('#resInfo'), resOff, '고화질 끄면 원래대로');
 
 console.log('\n[3] 되돌리기');
 await tap('#btnUndo');
