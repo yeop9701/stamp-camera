@@ -7,7 +7,7 @@ export const DEFAULTS = {
   current: 1,          // 다음에 찍힐 번호
   start: 1,
   step: 1,
-  pad: 3,              // 자릿수 0 채우기 (0이면 안 채움)
+  pad: 4,              // 자릿수 0 채우기 (0이면 안 채움)
   prefix: '',
   suffix: '',
   // 위치
@@ -37,13 +37,14 @@ export const DEFAULTS = {
   facing: 'environment',
   hiRes: false,        // ImageCapture.takePhoto 사용 (실험)
   flashMode: 'off',    // off | shot(촬영할 때만) | on(계속 켜기)
-  rev: 2,              // 설정 판 번호 (아래 REV_MIGRATIONS)
+  rev: 3,              // 설정 판 번호 (아래 REV_MIGRATIONS)
 };
 
 // 예전 기본값을 그대로 쓰던 설정은 새 기본값으로 옮긴다 (직접 바꾼 값은 유지)
 const OLD_DEFAULTS = { fileName: ['{no}_{date}_{time}'] };
 // 판이 오를 때 한 번만 옮기는 값: rev 2에서 "사진에 표시" 기본값을 껐다 → 예전 판에서 켜진 채 저장된 것도 끈다
-const REV_MIGRATIONS = { 2: { numberOn: [true], dateOn: [true] } };
+// rev 3: 자릿수 기본값 3 → 4 (옛 기본값 3 그대로 쓰던 설정만 4로)
+const REV_MIGRATIONS = { 2: { numberOn: [true], dateOn: [true] }, 3: { pad: [3] } };
 
 export function loadSettings() {
   try {

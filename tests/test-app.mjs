@@ -61,7 +61,7 @@ await cdp.send('Page.navigate', { url: APP });
 console.log('\n[1] 시작 화면');
 ok(await waitFor(`document.getElementById('video').videoWidth > 0`), '카메라 미리보기 시작');
 await sleep(500);
-eq(await text('#nextText'), '001', '다음 번호 001');
+eq(await text('#nextText'), '0001', '다음 번호 0001 (기본 4자리)');
 ok(await ev(`!document.getElementById('overlay').hidden && document.getElementById('overlay').width > 0`), '스탬프 오버레이 표시');
 ok(await ev(`document.getElementById('camFallback').hidden`), '대체 화면 숨김');
 ok(await ev(`document.getElementById('btnUndo').disabled`), '되돌리기 비활성');
@@ -82,11 +82,11 @@ await setVal('s-dateOn', true);
 
 console.log('\n[2] 촬영 → 자동 다운로드 + 목록 보관, 번호 증가');
 await tap('#btnShutter');
-ok(await waitFor(`document.getElementById('nextText').textContent === '002'`), '촬영 후 다음 번호 002');
+ok(await waitFor(`document.getElementById('nextText').textContent === '0002'`), '촬영 후 다음 번호 0002');
 for (let t = 0; t < 80 && !downloads().length; t++) await sleep(100);
 let dl = downloads();
 eq(dl.length, 1, '다운로드 1개');
-ok(/^\d{8}_001\.jpg$/.test(dl[0] || ''), '파일명 규칙 날짜_번호.jpg', dl);
+ok(/^\d{8}_0001\.jpg$/.test(dl[0] || ''), '파일명 규칙 날짜_번호.jpg', dl);
 if (dl[0]) {
   const jpg = readFileSync(DL + dl[0]);
   ok(jpg[0] === 0xff && jpg[1] === 0xd8, 'JPEG 파일');
@@ -99,7 +99,7 @@ const dims = await ev(`(async () => { const v = document.getElementById('video')
   const b = await createImageBitmap(r[0].blob); return { img: [b.width, b.height], cam: [v.videoWidth, v.videoHeight], no: r[0].numberText }; })()`);
 const want = dims.cam[0] >= dims.cam[1] ? [Math.round(dims.cam[1] * 4 / 3), dims.cam[1]] : [dims.cam[0], Math.round(dims.cam[0] * 4 / 3)];
 eq(dims.img, want, `저장 이미지는 4:3 (카메라 ${dims.cam.join('×')} → ${want.join('×')})`);
-eq(dims.no, '001', '목록 항목 번호 001');
+eq(dims.no, '0001', '목록 항목 번호 0001');
 ok((await text('#lastSavedInfo')).startsWith(`최근 저장: ${want.join('×')}`), '설정에 최근 저장 크기·용량 표시', await text('#lastSavedInfo'));
 const resOff = await text('#resInfo');
 await setVal('s-hiRes', true);
@@ -121,7 +121,7 @@ eq(await text('#resInfo'), resOff, '고화질 끄면 원래대로');
 console.log('\n[3] 되돌리기');
 await tap('#btnUndo');
 await sleep(500);
-eq(await text('#nextText'), '001', '되돌리기 후 다음 번호 001');
+eq(await text('#nextText'), '0001', '되돌리기 후 다음 번호 0001');
 ok(await ev(`document.getElementById('listCount').hidden`), '목록에서도 삭제됨');
 ok((await text('#toast')).includes('직접 지워'), '다운로드 파일 안내 문구', await text('#toast'));
 
@@ -130,6 +130,7 @@ await tap('#btnSettings');
 await sleep(300);
 ok(await ev(`!document.getElementById('settingsSheet').hidden`), '설정 패널 열림');
 await setVal('s-prefix', 'A-');
+await setVal('s-pad', '3');
 await setVal('s-current', 7);
 await setVal('s-step', 2);
 await setVal('s-box', true);
@@ -379,6 +380,21 @@ await cdp.send('Page.reload');
 await sleep(800);
 eq(await shown(), [true, false], '옮긴 뒤 다시 켠 것은 그대로');
 
+console.log('\n[13-2b] 자릿수 기본값 3 → 4 (rev 3)');
+const padVal = () => ev(`document.getElementById('s-pad').value`);
+await setStored({ rev: 2, pad: 3 });
+await cdp.send('Page.reload');
+await sleep(800);
+eq(await padVal(), '4', '옛 기본값 3자리 → 4자리로 옮김');
+await setStored({ rev: 2, pad: 2 });
+await cdp.send('Page.reload');
+await sleep(800);
+eq(await padVal(), '2', '직접 고른 2자리는 그대로');
+await setVal('s-pad', '3');
+await cdp.send('Page.reload');
+await sleep(800);
+eq(await padVal(), '3', '옮긴 뒤 다시 고른 3자리는 그대로');
+
 console.log('\n[13-3] 가로 화면');
 eq(await ev(`fetch('manifest.webmanifest').then((r) => r.json()).then((m) => m.orientation)`), 'any', '앱 설치 시 화면 방향 고정 안 함');
 await cdp.send('Emulation.setDeviceMetricsOverride', { width: 844, height: 390, deviceScaleFactor: 2, mobile: true,
@@ -404,6 +420,17 @@ ok(await ev(`(() => { const b = document.querySelector('#settingsSheet .sheet-bo
   return b.scrollWidth <= b.clientWidth && r.top >= 0 && r.bottom <= innerHeight + 1; })()`), '가로 화면 설정창: 화면 안, 옆 스크롤 없음');
 await shot(cdp, OUT + '9b-landscape-settings.png');
 await tap('#settingsSheet [data-close]');
+// 큰 화면(태블릿·폴드 펼침) 가로에서도 셔터는 오른쪽 (v1.5.0은 높이 600px 넘으면 아래로 갔음)
+for (const [w, h] of [[1280, 800], [1024, 768], [2208, 1768]]) {
+  await cdp.send('Emulation.setDeviceMetricsOverride', { width: w, height: h, deviceScaleFactor: 1, mobile: true,
+    screenOrientation: { type: 'landscapePrimary', angle: 90 } });
+  await sleep(400);
+  const big = await ev(`(() => { const r = (id) => document.querySelector(id).getBoundingClientRect();
+    const t = r('.topbar'), st = r('#stage'), b = r('.bottombar');
+    return { side: t.right <= st.left + 1 && st.right <= b.left + 1, stageH: Math.round(st.height) }; })()`);
+  ok(big.side && big.stageH >= h - 1, `가로 ${w}×${h}: 셔터 오른쪽, 미리보기 높이 전체`, big);
+  if (w === 1280) await shot(cdp, OUT + '9c-landscape-tablet.png');
+}
 await cdp.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
 
 console.log('\n[14] 콘솔 오류');

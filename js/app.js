@@ -7,7 +7,7 @@ import { addShot, deleteShot, clearShots, getShot, listShots, allShotsWithBlobs,
 import { downloadBlob, shareBlob, shareFiles, canvasToBlob } from './save.js';
 import { makeZip, uniqueNames } from './zip.js';
 
-const APP_VERSION = '1.5.0';
+const APP_VERSION = '1.6.0';
 const $ = (id) => document.getElementById(id);
 
 let s = loadSettings();

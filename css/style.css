@@ -197,7 +197,7 @@ label.range input { width: 100%; accent-color: var(--accent); margin: 6px 0 0; }
 .overlay.cropped { box-shadow: 0 0 0 100vmax rgba(0, 0, 0, .55); outline: 1px solid rgba(255, 255, 255, .35); }
 
 /* 가로 화면: 위·아래 막대를 왼쪽·오른쪽 세로 막대로 (미리보기를 최대한 크게) */
-@media (orientation: landscape) and (max-height: 600px) {
+@media (orientation: landscape) {
   #app { flex-direction: row; }
   .topbar {
     flex-direction: column; width: 76px; padding: 8px 6px; padding-left: calc(env(safe-area-inset-left) + 6px);
