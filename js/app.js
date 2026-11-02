@@ -7,7 +7,7 @@ import { addShot, deleteShot, clearShots, getShot, listShots, allShotsWithBlobs,
 import { downloadBlob, shareBlob, canvasToBlob } from './save.js';
 import { makeZip, uniqueNames } from './zip.js';
 
-const APP_VERSION = '1.0.0';
+const APP_VERSION = '1.1.0';
 const $ = (id) => document.getElementById(id);
 
 let s = loadSettings();
@@ -32,9 +32,30 @@ function persist() {
 
 function currentTexts(date) {
   return {
-    numberText: formatNumber(s.current, s),
+    numberText: s.numberOn ? formatNumber(s.current, s) : '',
     dateText: s.dateOn ? formatDate(date, s.dateFormat) : '',
   };
+}
+
+/* ── 플래시 ─────────────────────────────────────── */
+const FLASH_SETTLE_MS = 700;
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const FLASH_LABEL ={ off: '끔', shot: '촬영', on: '켜짐' };
+const FLASH_HINT = { off: '플래시 끔', shot: '플래시: 찍는 순간에만 켜짐', on: '플래시: 계속 켜짐' };
+
+function updateFlashUI() {
+  const b = $('btnFlash');
+  const ok = camera.active && camera.torchSupported;
+  b.disabled = !ok;
+  b.dataset.mode = ok ? s.flashMode : 'off';
+  $('flashLabel').textContent = ok ? FLASH_LABEL[s.flashMode] : '';
+  b.setAttribute('aria-label', ok ? FLASH_HINT[s.flashMode] : '이 카메라는 플래시를 지원하지 않음');
+}
+
+// 카메라를 켜거나 바꾼 뒤, 현재 모드에 맞게 손전등을 켜고 끈다
+async function applyFlash() {
+  if (camera.active && camera.torchSupported) await camera.setTorch(s.flashMode === 'on');
+  updateFlashUI();
 }
 
 function updateNext() {
@@ -86,13 +107,20 @@ async function startCamera() {
     await camera.start(s.facing);
     $('btnShutter').disabled = false;
     $('btnSwitch').disabled = false;
-    const v = $('video');
-    $('resInfo').textContent = `(현재 미리보기 ${v.videoWidth}×${v.videoHeight})`;
+    updateResInfo();
     renderOverlay();
+    await applyFlash();
   } catch (e) {
     console.error(e);
     showFallback(cameraErrorMessage(e));
   }
+}
+
+function updateResInfo() {
+  const v = $('video');
+  if (!v.videoWidth) return ($('resInfo').textContent = '');
+  const mp = ((v.videoWidth * v.videoHeight) / 1e6).toFixed(1);
+  $('resInfo').textContent = `지금 저장 해상도: ${v.videoWidth}×${v.videoHeight} (약 ${mp}MP)`;
 }
 
 function showFallback(msg) {
@@ -101,14 +129,24 @@ function showFallback(msg) {
   $('btnShutter').disabled = true;
   $('btnSwitch').disabled = true;
   renderOverlay();
+  updateFlashUI();
 }
 
 $('btnRetry').onclick = startCamera;
+$('btnFlash').onclick = async () => {
+  const order = ['off', 'shot', 'on'];
+  s.flashMode = order[(order.indexOf(s.flashMode) + 1) % order.length];
+  persist();
+  await applyFlash();
+  toast(FLASH_HINT[s.flashMode]);
+};
 $('btnSwitch').onclick = async () => {
   try {
     s.facing = await camera.switchFacing();
     persist();
+    updateResInfo();
     renderOverlay();
+    await applyFlash();
   } catch (e) {
     showFallback(cameraErrorMessage(e));
   }
@@ -160,7 +198,9 @@ async function storeStamped(canvas, date, { allowShare = true } = {}) {
 
   if (s.keepInList || mode === 'list') {
     try {
-      listId = await addShot({ name, numberText, createdAt: date.getTime(), blob, thumb });
+      listId = await addShot({
+        name, numberText, createdAt: date.getTime(), blob, thumb, width: canvas.width, height: canvas.height,
+      });
       saved = true;
     } catch (e) {
       console.error(e);
@@ -205,9 +245,16 @@ async function shoot() {
   if (busy || !camera.active) return;
   busy = true;
   $('btnShutter').disabled = true;
+  // "촬영" 모드: 찍기 직전에 켜고, 카메라 노출이 맞춰질 때까지 잠깐 기다린 뒤 찍고 끈다
+  let lit = s.flashMode === 'shot' && (await camera.setTorch(true));
   try {
+    if (lit) await sleep(FLASH_SETTLE_MS);
     const date = new Date();
     const shot = await camera.capture(s.hiRes);
+    if (lit) {
+      lit = false;
+      await camera.setTorch(false);
+    }
     const f = $('flash');
     f.classList.remove('on');
     void f.offsetWidth;
@@ -219,6 +266,7 @@ async function shoot() {
     console.error(e);
     toast('촬영 실패: ' + (e.message || e), 3000);
   } finally {
+    if (lit) camera.setTorch(false); // 촬영 중 오류가 나도 손전등은 끈다
     busy = false;
     $('btnShutter').disabled = !camera.active;
   }
@@ -292,7 +340,7 @@ const sel = $('s-dateFormat');
 const sample = new Date();
 for (const f of DATE_FORMATS) sel.add(new Option(`${formatDate(sample, f)}  (${f})`, f));
 
-const fields = ['current', 'start', 'step', 'pad', 'prefix', 'suffix', 'margin', 'size', 'bold', 'color',
+const fields = ['numberOn', 'current', 'start', 'step', 'pad', 'prefix', 'suffix', 'margin', 'size', 'bold', 'color',
   'outline', 'outlineWidth', 'outlineColor', 'box', 'boxColor', 'boxOpacity', 'dateOn', 'dateFormat',
   'dateLayout', 'saveMode', 'keepInList', 'fileName', 'quality', 'hiRes'];
 const outputs = {
@@ -481,7 +529,7 @@ async function openViewer(id) {
   if (viewerUrl) URL.revokeObjectURL(viewerUrl);
   viewerUrl = URL.createObjectURL(it.blob);
   $('viewerImg').src = viewerUrl;
-  $('viewerName').textContent = `${it.name} · ${(it.blob.size / 1024).toFixed(0)}KB`;
+  $('viewerName').textContent = `${it.name} · ${it.width ? `${it.width}×${it.height} · ` : ''}${(it.blob.size / 1024).toFixed(0)}KB`;
   $('viewer').hidden = false;
 }
 function closeViewer() {

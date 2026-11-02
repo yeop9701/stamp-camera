@@ -42,6 +42,31 @@ export class Camera {
     }
   }
 
+  get track() {
+    return this.stream ? this.stream.getVideoTracks()[0] : null;
+  }
+
+  // 플래시(손전등) 지원 여부 — 안드로이드 크롬 후면 카메라에서 주로 지원
+  get torchSupported() {
+    const t = this.track;
+    try {
+      return !!(t && t.getCapabilities && t.getCapabilities().torch);
+    } catch (e) {
+      return false;
+    }
+  }
+
+  async setTorch(on) {
+    if (!this.torchSupported) return false;
+    try {
+      await this.track.applyConstraints({ advanced: [{ torch: !!on }] });
+      return true;
+    } catch (e) {
+      console.warn('플래시 제어 실패', e);
+      return false;
+    }
+  }
+
   stop() {
     if (this.stream) {
       this.stream.getTracks().forEach((t) => t.stop());

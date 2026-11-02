@@ -3,6 +3,7 @@ const KEY = 'stampcam.settings.v1';
 
 export const DEFAULTS = {
   // 번호
+  numberOn: true,      // 사진에 번호 표시 (꺼도 번호는 파일명에 쓰이고 계속 올라감)
   current: 1,          // 다음에 찍힐 번호
   start: 1,
   step: 1,
@@ -30,12 +31,16 @@ export const DEFAULTS = {
   // 저장
   saveMode: 'download',  // download | share | list
   keepInList: true,
-  fileName: '{no}_{date}_{time}',
+  fileName: '{date}_{no}',
   quality: 92,
   // 카메라
   facing: 'environment',
   hiRes: false,        // ImageCapture.takePhoto 사용 (실험)
+  flashMode: 'off',    // off | shot(촬영할 때만) | on(계속 켜기)
 };
+
+// 예전 기본값을 그대로 쓰던 설정은 새 기본값으로 옮긴다 (직접 바꾼 값은 유지)
+const OLD_DEFAULTS = { fileName: ['{no}_{date}_{time}'] };
 
 export function loadSettings() {
   try {
@@ -47,6 +52,9 @@ export function loadSettings() {
     const out = { ...DEFAULTS };
     for (const k of Object.keys(DEFAULTS)) {
       if (k in saved && typeof saved[k] === typeof DEFAULTS[k]) out[k] = saved[k];
+    }
+    for (const [k, olds] of Object.entries(OLD_DEFAULTS)) {
+      if (olds.includes(out[k])) out[k] = DEFAULTS[k];
     }
     return out;
   } catch (e) {

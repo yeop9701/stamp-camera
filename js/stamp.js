@@ -11,19 +11,21 @@ function hexToRgba(hex, alpha) {
 
 export function drawStamp(ctx, w, h, texts, s) {
   const short = Math.min(w, h);
-  const fontPx = Math.max(4, (short * s.size) / 100);
+  let fontPx = Math.max(4, (short * s.size) / 100);
   const margin = (short * s.margin) / 100;
   const weight = s.bold ? 'bold' : 'normal';
   const family = 'system-ui, "Noto Sans KR", "Malgun Gothic", sans-serif';
 
-  // 줄 구성
+  // 줄 구성 (번호 표시를 끄면 numberText가 빈 문자열 → 날짜만, 날짜 크기는 그대로)
   const lines = [];
-  if (texts.dateText && s.dateLayout === 'inline') {
+  if (texts.numberText && texts.dateText && s.dateLayout === 'inline') {
     lines.push({ text: `${texts.numberText}  ${texts.dateText}`, px: fontPx });
   } else {
-    lines.push({ text: texts.numberText, px: fontPx });
+    if (texts.numberText) lines.push({ text: texts.numberText, px: fontPx });
     if (texts.dateText) lines.push({ text: texts.dateText, px: fontPx * DATE_RATIO });
   }
+  if (!lines.length) return;
+  fontPx = Math.max(...lines.map((l) => l.px)); // 여백·외곽선·박스 크기의 기준
 
   const outlinePx = s.outline ? fontPx * s.outlineWidth * 0.035 : 0;
   const lineGap = fontPx * 0.15;

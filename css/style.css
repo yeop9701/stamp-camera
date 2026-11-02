@@ -30,6 +30,14 @@ button { font: inherit; color: inherit; }
 .icon-btn svg { width: 26px; height: 26px; fill: var(--text); }
 .icon-btn:disabled svg { fill: #555; }
 .icon-btn:active:not(:disabled) { background: var(--panel-2); }
+.flash-btn { position: relative; }
+.flash-btn[data-mode="shot"] svg, .flash-btn[data-mode="on"] svg { fill: var(--accent); }
+.flash-btn:disabled svg { fill: #444; }
+.flash-label {
+  position: absolute; bottom: 0; left: 0; right: 0; font-size: 10px; line-height: 1; color: var(--accent); pointer-events: none;
+}
+.flash-btn[data-mode="off"] .flash-label { color: var(--muted); }
+.flash-btn[data-mode="off"]:not(:disabled) svg { fill: var(--text); }
 .icon-btn.round { border-radius: 50%; background: var(--panel-2); width: 52px; height: 52px; }
 .next {
   flex: 1; min-width: 0; border: 0; background: var(--panel); border-radius: 12px;

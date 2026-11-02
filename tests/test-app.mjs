@@ -29,7 +29,8 @@ cdp.ws.addEventListener('message', (m) => {
   if (d.method === 'Runtime.consoleAPICalled' && d.params.type === 'error') errors.push(d.params.args.map((a) => a.value ?? a.description).join(' '));
 });
 
-const center = (sel) => ev(`(() => { const r = document.querySelector(${JSON.stringify(sel)}).getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; })()`);
+const center = (sel) => ev(`(() => { const el = document.querySelector(${JSON.stringify(sel)});
+  el.scrollIntoView({ block: 'nearest' }); const r = el.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; })()`);
 const tap = async (sel) => { const p = await center(sel); await click(cdp, p.x, p.y); };
 const text = (sel) => ev(`document.querySelector(${JSON.stringify(sel)}).textContent`);
 const downloads = () => readdirSync(DL).filter((f) => !f.endsWith('.crdownload') && !f.endsWith('.tmp'));
@@ -62,6 +63,7 @@ eq(await text('#nextText'), '001', '다음 번호 001');
 ok(await ev(`!document.getElementById('overlay').hidden && document.getElementById('overlay').width > 0`), '스탬프 오버레이 표시');
 ok(await ev(`document.getElementById('camFallback').hidden`), '대체 화면 숨김');
 ok(await ev(`document.getElementById('btnUndo').disabled`), '되돌리기 비활성');
+ok(await ev(`document.getElementById('btnFlash').disabled`), '플래시 없는 카메라 → 플래시 버튼 비활성');
 const geo = await ev(`(() => { const v = document.getElementById('video'), o = document.getElementById('overlay').getBoundingClientRect();
   return { vr: v.videoWidth / v.videoHeight, or: o.width / o.height }; })()`);
 ok(Math.abs(geo.vr - geo.or) < 0.01, '오버레이 비율 = 영상 비율', geo);
@@ -73,7 +75,7 @@ ok(await waitFor(`document.getElementById('nextText').textContent === '002'`), '
 await sleep(1200);
 let dl = downloads();
 eq(dl.length, 1, '다운로드 1개');
-ok(/^001_\d{8}_\d{6}\.jpg$/.test(dl[0] || ''), '파일명 규칙 001_날짜_시간.jpg', dl);
+ok(/^\d{8}_001\.jpg$/.test(dl[0] || ''), '파일명 규칙 날짜_번호.jpg', dl);
 if (dl[0]) {
   const jpg = readFileSync(DL + dl[0]);
   ok(jpg[0] === 0xff && jpg[1] === 0xd8, 'JPEG 파일');
@@ -107,7 +109,7 @@ await setVal('s-color', '#ffcc00');
 await tap('#s-position button[data-pos="br"]');
 await sleep(300);
 eq(await text('#nextText'), 'A-007', '접두어+번호 A-007');
-ok((await text('#fileNamePreview')).startsWith('A-007_'), '파일명 미리보기 갱신');
+ok(/^\d{8}_A-007\.jpg$/.test(await text('#fileNamePreview')), '파일명 미리보기 갱신', await text('#fileNamePreview'));
 await shot(cdp, OUT + '2-settings.png');
 await tap('#settingsSheet [data-close]');
 await sleep(300);
@@ -122,7 +124,7 @@ await tap('#btnShutter');
 ok(await waitFor(`document.getElementById('nextText').textContent === 'A-011'`), '두 장 찍고 다음 번호 A-011');
 await sleep(1200);
 dl = downloads().sort();
-ok(dl.some((f) => f.startsWith('A-007_')) && dl.some((f) => f.startsWith('A-009_')), 'A-007, A-009 다운로드', dl);
+ok(dl.some((f) => f.endsWith('_A-007.jpg')) && dl.some((f) => f.endsWith('_A-009.jpg')), 'A-007, A-009 다운로드', dl);
 
 console.log('\n[6] 새로고침해도 설정·번호 유지');
 await cdp.send('Page.reload');
@@ -192,7 +194,81 @@ await sleep(500);
 eq(await text('#listCount'), '4', '목록 4장');
 await cdp.send('Page.removeScriptToEvaluateOnNewDocument', { identifier: inj.identifier });
 
-console.log('\n[11] 콘솔 오류');
+console.log('\n[11] 사진에 번호 표시 끄기');
+await cdp.send('Page.reload');
+await sleep(500);
+ok(await waitFor(`document.getElementById('video').videoWidth > 0`), '카메라 재시작');
+await setVal('s-box', false);
+// 오버레이에 칠해진 픽셀 수 = 스탬프 크기
+const inked = () => ev(`(() => { const o = document.getElementById('overlay');
+  const d = o.getContext('2d').getImageData(0, 0, o.width, o.height).data; let n = 0;
+  for (let i = 3; i < d.length; i += 4) if (d[i]) n++; return n; })()`);
+const both = await inked();
+await setVal('s-numberOn', false);
+const dateOnly = await inked();
+ok(dateOnly > 0 && dateOnly < both * 0.8, '번호 끄면 날짜만 남음', { both, dateOnly });
+await setVal('s-dateOn', false);
+eq(await inked(), 0, '번호·날짜 모두 끄면 스탬프 없음');
+await setVal('s-dateOn', true);
+await shot(cdp, OUT + '7-date-only.png');
+const n0 = await text('#nextText');
+await tap('#btnShutter');
+ok(await waitFor(`document.getElementById('nextText').textContent !== ${JSON.stringify(n0)}`), '번호 표시를 꺼도 번호는 올라감');
+await setVal('s-numberOn', true);
+ok((await inked()) > dateOnly, '다시 켜면 번호 표시');
+
+console.log('\n[12] 플래시 (손전등 지원 카메라를 흉내냄)');
+const torchMock = await cdp.send('Page.addScriptToEvaluateOnNewDocument', { source: `
+  window.__torch = [];
+  const gc = MediaStreamTrack.prototype.getCapabilities;
+  MediaStreamTrack.prototype.getCapabilities = function () { return { ...(gc ? gc.call(this) : {}), torch: true }; };
+  MediaStreamTrack.prototype.applyConstraints = function (c) {
+    const t = c && c.advanced && c.advanced[0] && 'torch' in c.advanced[0];
+    if (t) window.__torch.push({ on: c.advanced[0].torch, at: performance.now() });
+    return Promise.resolve();
+  };` });
+await cdp.send('Page.reload');
+await sleep(500);
+ok(await waitFor(`document.getElementById('video').videoWidth > 0 && !document.getElementById('btnFlash').disabled`), '플래시 버튼 활성');
+eq(await text('#flashLabel'), '끔', '처음엔 끔');
+await tap('#btnFlash');
+await sleep(200);
+eq(await text('#flashLabel'), '촬영', '한 번 누르면 "촬영" 모드');
+await ev(`(window.__torch.length = 0, true)`);
+const nA = await text('#nextText');
+const t0 = await ev('performance.now()');
+await tap('#btnShutter');
+ok(await waitFor(`document.getElementById('nextText').textContent !== ${JSON.stringify(nA)}`), '플래시 촬영 저장됨');
+await sleep(300);
+const log = await ev('window.__torch');
+eq(log.map((l) => l.on), [true, false], '찍을 때 켰다가 끔');
+ok(log.length === 2 && log[1].at - log[0].at >= 650, '켠 뒤 노출 맞출 시간(0.7초) 기다림', log.map((l) => Math.round(l.at - t0)));
+await tap('#btnFlash');
+await sleep(200);
+eq(await text('#flashLabel'), '켜짐', '두 번 누르면 "켜짐" 모드');
+eq((await ev('window.__torch')).slice(-1)[0].on, true, '켜짐 모드 → 손전등 켜짐');
+await cdp.send('Page.reload');
+await sleep(500);
+ok(await waitFor(`window.__torch.length > 0 && window.__torch.slice(-1)[0].on === true`), '새로고침 후에도 켜짐 모드 유지');
+await tap('#btnFlash');
+await sleep(200);
+eq(await text('#flashLabel'), '끔', '세 번째 누르면 끔');
+eq((await ev('window.__torch')).slice(-1)[0].on, false, '손전등 꺼짐');
+await shot(cdp, OUT + '8-flash.png');
+await cdp.send('Page.removeScriptToEvaluateOnNewDocument', { identifier: torchMock.identifier });
+
+console.log('\n[13] 예전 파일명 기본값은 새 기본값으로 옮김');
+await ev(`(() => { const s = JSON.parse(localStorage.getItem('stampcam.settings.v1')); s.fileName = '{no}_{date}_{time}';
+  localStorage.setItem('stampcam.settings.v1', JSON.stringify(s)); return true; })()`);
+await cdp.send('Page.reload');
+await sleep(800);
+eq(await ev(`document.getElementById('s-fileName').value`), '{date}_{no}', '옛 기본값 → {date}_{no}');
+await setVal('s-fileName', '{no}');
+await cdp.send('Page.reload');
+await sleep(800);
+eq(await ev(`document.getElementById('s-fileName').value`), '{no}', '직접 바꾼 규칙은 그대로');
+
+console.log('\n[14] 콘솔 오류');
 const real = errors.filter((e) => !/NotAllowedError|denied|카메라/.test(e));
 eq(real, [], '예상 밖 오류 없음');
 

@@ -1,6 +1,6 @@
 // 오프라인 캐시: 캐시에 있으면 바로 보여주고, 뒤에서 새 버전을 받아 캐시를 갱신한다.
 // 앱 파일을 바꾸면 VERSION을 올린다.
-const VERSION = 'v1.0.0';
+const VERSION = 'v1.1.0';
 const CACHE = 'stampcam-' + VERSION;
 const FILES = [
   './',

@@ -20,6 +20,10 @@
       <span class="next-label">다음</span>
       <span id="nextText" class="next-text">001</span>
     </button>
+    <button id="btnFlash" class="icon-btn flash-btn" aria-label="플래시" data-mode="off" disabled>
+      <svg viewBox="0 0 24 24"><path d="M7 2v11h3v9l7-12h-4l3-8z"/></svg>
+      <span id="flashLabel" class="flash-label"></span>
+    </button>
     <button id="btnUndo" class="icon-btn" aria-label="직전 촬영 취소" disabled>
       <svg viewBox="0 0 24 24"><path d="M12.5 8c-2.6 0-5 1-6.9 2.6L2 7v9h9l-3.6-3.6A7.9 7.9 0 0 1 20.1 16l2.3-.8A10.4 10.4 0 0 0 12.5 8z"/></svg>
     </button>
@@ -60,6 +64,8 @@
     <div class="sheet-body">
       <fieldset id="secNumber">
         <legend>번호</legend>
+        <label class="check"><input type="checkbox" id="s-numberOn"> 사진에 번호 표시</label>
+        <p class="hint">꺼도 번호는 파일명에 쓰이고 찍을 때마다 계속 올라갑니다.</p>
         <div class="row">
           <label>다음 번호<input type="number" id="s-current" inputmode="numeric" step="1"></label>
           <button id="btnResetNum" class="btn small">시작 번호로</button>
@@ -136,14 +142,14 @@
         </select></label>
         <label class="check"><input type="checkbox" id="s-keepInList"> 앱 촬영 목록에도 보관</label>
         <label>파일명 규칙<input type="text" id="s-fileName"></label>
-        <p class="hint">{no} 번호 · {date} 20261029 · {time} 143012 → <b id="fileNamePreview"></b></p>
+        <p class="hint">{date} 20261029 · {no} 번호 · {time} 143012 → <b id="fileNamePreview"></b></p>
         <label class="range">JPEG 품질 <output id="o-quality"></output><input type="range" id="s-quality" min="50" max="100" step="1"></label>
       </fieldset>
 
       <fieldset>
         <legend>카메라</legend>
         <label class="check"><input type="checkbox" id="s-hiRes"> 고화질 촬영 (기기 원본 해상도, 실험 기능)</label>
-        <p class="hint">켜면 촬영이 조금 느려질 수 있습니다. 사진 방향이 이상하면 끄세요. <span id="resInfo"></span></p>
+        <p class="hint"><b id="resInfo"></b><br>끄면 미리보기 화면 그대로 저장합니다(빠름). 켜면 기본 카메라 앱에 가까운 해상도로 찍지만 조금 느리고, 기기에 따라 사진 방향이 틀어질 수 있습니다.</p>
         <button id="btnResetAll" class="btn small danger">설정 전체 초기화</button>
       </fieldset>
       <p class="hint center">번호 스탬프 카메라 · <span id="appVersion"></span></p>
