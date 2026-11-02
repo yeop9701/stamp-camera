@@ -379,6 +379,33 @@ await cdp.send('Page.reload');
 await sleep(800);
 eq(await shown(), [true, false], '옮긴 뒤 다시 켠 것은 그대로');
 
+console.log('\n[13-3] 가로 화면');
+eq(await ev(`fetch('manifest.webmanifest').then((r) => r.json()).then((m) => m.orientation)`), 'any', '앱 설치 시 화면 방향 고정 안 함');
+await cdp.send('Emulation.setDeviceMetricsOverride', { width: 844, height: 390, deviceScaleFactor: 2, mobile: true,
+  screenOrientation: { type: 'landscapePrimary', angle: 90 } });
+await sleep(600);
+const land = await ev(`(() => { const r = (id) => document.querySelector(id).getBoundingClientRect();
+  const t = r('.topbar'), st = r('#stage'), b = r('.bottombar'), sh = r('#btnShutter');
+  return { side: t.right <= st.left + 1 && st.right <= b.left + 1, stage: [Math.round(st.width), Math.round(st.height)],
+    shutterIn: sh.top >= 0 && sh.bottom <= innerHeight, noScroll: document.documentElement.scrollWidth <= innerWidth }; })()`);
+ok(land.side, '설정·번호 막대는 왼쪽, 셔터 막대는 오른쪽', land);
+ok(land.stage[1] >= 380 && land.stage[0] > land.stage[1], '미리보기가 화면 높이 전체를 씀', land.stage);
+ok(land.shutterIn && land.noScroll, '셔터가 화면 안에 있고 옆 스크롤 없음', land);
+await shot(cdp, OUT + '9-landscape.png');
+const nL = await text('#nextText');
+await tap('#btnShutter');
+ok(await waitFor(`document.getElementById('nextText').textContent !== ${JSON.stringify(nL)}`), '가로 화면에서 촬영');
+await sleep(300);
+const ld = (await text('#lastSavedInfo')).match(/(\d+)×(\d+)/);
+ok(ld && Math.abs(ld[1] / ld[2] - 4 / 3) < 0.01, '가로 사진 4:3', ld && ld[0]);
+await tap('#btnSettings');
+await sleep(400);
+ok(await ev(`(() => { const b = document.querySelector('#settingsSheet .sheet-body'); const r = document.getElementById('settingsSheet').getBoundingClientRect();
+  return b.scrollWidth <= b.clientWidth && r.top >= 0 && r.bottom <= innerHeight + 1; })()`), '가로 화면 설정창: 화면 안, 옆 스크롤 없음');
+await shot(cdp, OUT + '9b-landscape-settings.png');
+await tap('#settingsSheet [data-close]');
+await cdp.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
+
 console.log('\n[14] 콘솔 오류');
 const real = errors.filter((e) => !/NotAllowedError|denied|카메라/.test(e));
 eq(real, [], '예상 밖 오류 없음');

@@ -195,3 +195,26 @@ label.range input { width: 100%; accent-color: var(--accent); margin: 6px 0 0; }
 }
 .toast.show { opacity: 1; }
 .overlay.cropped { box-shadow: 0 0 0 100vmax rgba(0, 0, 0, .55); outline: 1px solid rgba(255, 255, 255, .35); }
+
+/* 가로 화면: 위·아래 막대를 왼쪽·오른쪽 세로 막대로 (미리보기를 최대한 크게) */
+@media (orientation: landscape) and (max-height: 600px) {
+  #app { flex-direction: row; }
+  .topbar {
+    flex-direction: column; width: 76px; padding: 8px 6px; padding-left: calc(env(safe-area-inset-left) + 6px);
+    box-sizing: content-box;
+  }
+  .next { flex-direction: column; align-items: center; gap: 0; padding: 6px 2px; width: 100%; }
+  .next-text { font-size: 17px; max-width: 100%; }
+  .bottombar {
+    flex-direction: column-reverse; width: 92px; padding: 12px 8px; padding-right: calc(env(safe-area-inset-right) + 8px);
+    box-sizing: content-box;
+  }
+  .sheet { max-height: none; top: 0; left: 50%; transform: translateX(-50%); width: min(100%, 640px); border-radius: 0; }
+  @keyframes up { from { opacity: 0; } to { opacity: 1; } }
+  .sheet.full { width: 100%; left: 0; transform: none; }
+  .viewer { flex-direction: row; }
+  .viewer img { width: auto; min-width: 0; flex: 1; height: 100%; }
+  .viewer-bar { width: 200px; justify-content: center; }
+  .viewer-bar div { flex-direction: column; }
+  .toast { bottom: 24px; }
+}
