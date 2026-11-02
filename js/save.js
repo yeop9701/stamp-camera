@@ -21,13 +21,18 @@ export function canShareFiles() {
 }
 
 // 공유 시트를 연다. 사용자가 취소하면 false.
-export async function shareBlob(blob, name) {
-  const file = new File([blob], name, { type: blob.type || 'image/jpeg' });
-  if (!(navigator.canShare && navigator.canShare({ files: [file] }))) {
+export function shareBlob(blob, name) {
+  return shareFiles([{ blob, name }]);
+}
+
+// 여러 장을 한 번에 공유 (items: [{ blob, name }])
+export async function shareFiles(items) {
+  const files = items.map(({ blob, name }) => new File([blob], name, { type: blob.type || 'image/jpeg' }));
+  if (!(navigator.canShare && navigator.canShare({ files }))) {
     throw new Error('이 브라우저는 파일 공유를 지원하지 않습니다.');
   }
   try {
-    await navigator.share({ files: [file] });
+    await navigator.share({ files });
     return true;
   } catch (e) {
     if (e.name === 'AbortError') return false;

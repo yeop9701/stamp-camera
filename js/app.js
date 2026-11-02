@@ -4,10 +4,10 @@ import { formatNumber, nextValue, formatDate, buildFileName, DATE_FORMATS } from
 import { drawStamp } from './stamp.js';
 import { Camera, cameraErrorMessage, crop43 } from './camera.js';
 import { addShot, deleteShot, clearShots, getShot, listShots, allShotsWithBlobs, requestPersist } from './storage.js';
-import { downloadBlob, shareBlob, canvasToBlob } from './save.js';
+import { downloadBlob, shareBlob, shareFiles, canvasToBlob } from './save.js';
 import { makeZip, uniqueNames } from './zip.js';
 
-const APP_VERSION = '1.3.0';
+const APP_VERSION = '1.4.0';
 const $ = (id) => document.getElementById(id);
 
 let s = loadSettings();
@@ -477,19 +477,28 @@ async function refreshListBadge() {
 }
 
 let gridUrls = [];
+// 선택 모드: 고른 사진 id 모음
+let selecting = false;
+const selected = new Set();
+let listIds = [];
+
 async function refreshList() {
   const items = await refreshListBadge();
   gridUrls.forEach((u) => URL.revokeObjectURL(u));
   gridUrls = [];
   const grid = $('listGrid');
   grid.textContent = '';
+  listIds = items.map((i) => i.id);
+  for (const id of [...selected]) if (!listIds.includes(id)) selected.delete(id);
+  if (!items.length) selecting = false;
   const total = items.reduce((a, i) => a + i.size, 0);
   $('listSummary').textContent = items.length ? `${items.length}장 · ${(total / 1048576).toFixed(1)}MB` : '';
   $('listEmpty').hidden = items.length > 0;
-  $('btnZip').disabled = $('btnClear').disabled = items.length === 0;
+  $('btnZip').disabled = $('btnClear').disabled = $('btnSelect').disabled = items.length === 0;
   for (const it of items) {
     const b = document.createElement('button');
     b.className = 'list-item';
+    b.dataset.id = it.id;
     const img = document.createElement('img');
     if (it.thumb) {
       const u = URL.createObjectURL(it.thumb);
@@ -500,35 +509,144 @@ async function refreshList() {
     const cap = document.createElement('span');
     cap.textContent = it.numberText;
     b.append(img, cap);
-    b.onclick = () => openViewer(it.id);
+    bindListItem(b, it.id);
     grid.append(b);
   }
+  renderSelection();
+  return items;
 }
 
-$('btnList').onclick = async () => {
-  openSheet('listSheet');
-  await refreshList();
-};
+// 누르면 보기(선택 모드에서는 고르기), 길게 누르면 선택 모드로
+function bindListItem(b, id) {
+  let timer = null;
+  let longPressed = false;
+  let start = null;
+  const cancel = () => {
+    clearTimeout(timer);
+    timer = null;
+  };
+  b.addEventListener('pointerdown', (e) => {
+    longPressed = false;
+    start = { x: e.clientX, y: e.clientY };
+    cancel();
+    timer = setTimeout(() => {
+      timer = null;
+      longPressed = true;
+      if (!selecting) setSelecting(true);
+      selected.add(id);
+      renderSelection();
+      if (navigator.vibrate) navigator.vibrate(30);
+    }, 500);
+  });
+  b.addEventListener('pointermove', (e) => {
+    if (start && Math.hypot(e.clientX - start.x, e.clientY - start.y) > 10) cancel();
+  });
+  b.addEventListener('pointerup', cancel);
+  b.addEventListener('pointercancel', cancel);
+  b.addEventListener('contextmenu', (e) => e.preventDefault());
+  b.addEventListener('click', () => {
+    if (longPressed) {
+      longPressed = false;
+      return;
+    }
+    if (!selecting) return openViewer(id);
+    if (selected.has(id)) selected.delete(id);
+    else selected.add(id);
+    renderSelection();
+  });
+}
 
-$('btnZip').onclick = async () => {
-  const btn = $('btnZip');
+function setSelecting(on) {
+  selecting = on;
+  if (!on) selected.clear();
+  renderSelection();
+}
+
+function renderSelection() {
+  const n = selected.size;
+  $('listGrid').classList.toggle('selecting', selecting);
+  $('listActions').hidden = selecting;
+  $('selBar').hidden = !selecting;
+  $('listTip').hidden = selecting || listIds.length === 0;
+  $('selCount').textContent = `${n}장 선택`;
+  $('selAll').textContent = n && n === listIds.length ? '선택 해제' : '전체 선택';
+  ['selDownload', 'selZip', 'selShare', 'selDelete'].forEach((k) => ($(k).disabled = n === 0));
+  document.querySelectorAll('#listGrid .list-item').forEach((b) => b.classList.toggle('sel', selected.has(Number(b.dataset.id))));
+}
+
+// 고른 사진(원본 포함)을 찍은 순서대로
+async function selectedShots() {
+  const ids = listIds.filter((id) => selected.has(id)).sort((a, b) => a - b);
+  return (await Promise.all(ids.map((id) => getShot(id)))).filter(Boolean);
+}
+
+async function exportZip(items, btn) {
+  const label = btn.textContent;
   btn.disabled = true;
   btn.textContent = 'ZIP 만드는 중…';
   try {
-    const items = await allShotsWithBlobs();
     const names = uniqueNames(items.map((i) => i.name));
     const zip = await makeZip(items.map((i, n) => ({ name: names[n], blob: i.blob, date: new Date(i.createdAt) })));
-    const d = new Date();
-    const stamp = buildFileName('{date}_{time}', '', d).replace(/\.jpg$/, '');
+    const stamp = buildFileName('{date}_{time}', '', new Date()).replace(/\.jpg$/, '');
     downloadBlob(zip, `스탬프사진_${stamp}.zip`);
     toast(`${items.length}장을 ZIP으로 내보냈습니다.`);
   } catch (e) {
     console.error(e);
     toast('ZIP을 만들지 못했습니다: ' + (e.message || e), 3000);
   } finally {
-    btn.textContent = 'ZIP으로 내보내기';
+    btn.textContent = label;
     btn.disabled = false;
   }
+}
+
+// 지운 뒤: 되돌리기 기록 정리, 목록·썸네일 갱신
+async function afterDelete(ids) {
+  undoStack.forEach((u) => ids.includes(u.listId) && (u.listId = null));
+  const items = await refreshList();
+  setLastThumb(items[0] && items[0].thumb ? items[0].thumb : null);
+}
+
+$('btnList').onclick = async () => {
+  openSheet('listSheet');
+  setSelecting(false);
+  await refreshList();
+};
+
+$('btnZip').onclick = async () => exportZip(await allShotsWithBlobs(), $('btnZip'));
+
+$('btnSelect').onclick = () => setSelecting(true);
+$('selCancel').onclick = () => setSelecting(false);
+$('selAll').onclick = () => {
+  if (selected.size === listIds.length) selected.clear();
+  else listIds.forEach((id) => selected.add(id));
+  renderSelection();
+};
+$('selZip').onclick = async () => exportZip(await selectedShots(), $('selZip'));
+$('selDownload').onclick = async () => {
+  const items = await selectedShots();
+  const names = uniqueNames(items.map((i) => i.name));
+  // 여러 장이면 크롬이 "여러 파일 다운로드 허용"을 한 번 물어본다
+  for (let n = 0; n < items.length; n++) {
+    downloadBlob(items[n].blob, names[n]);
+    if (n < items.length - 1) await new Promise((r) => setTimeout(r, 300));
+  }
+  toast(`${items.length}장을 다운로드했습니다.`);
+};
+$('selShare').onclick = async () => {
+  try {
+    const items = await selectedShots();
+    await shareFiles(items.map((i) => ({ blob: i.blob, name: i.name })));
+  } catch (e) {
+    toast(e.message || String(e), 3000);
+  }
+};
+$('selDelete').onclick = async () => {
+  const ids = [...selected];
+  if (!ids.length || !confirm(`선택한 ${ids.length}장을 목록에서 지울까요? 되돌릴 수 없습니다.\n(이미 다운로드한 파일은 지워지지 않습니다)`)) return;
+  for (const id of ids) await deleteShot(id);
+  setSelecting(false);
+  await afterDelete(ids);
+  toast(`${ids.length}장을 지웠습니다.`);
 };
 
 $('btnClear').onclick = async () => {
@@ -574,9 +692,8 @@ $('vDelete').onclick = async () => {
   if (!viewerItem || !confirm(`${viewerItem.name} 을(를) 목록에서 지울까요?`)) return;
   const id = viewerItem.id;
   await deleteShot(id);
-  undoStack.forEach((u) => u.listId === id && (u.listId = null));
   closeViewer();
-  await refreshList();
+  await afterDelete([id]);
 };
 
 /* ── 시작 ───────────────────────────────────────── */

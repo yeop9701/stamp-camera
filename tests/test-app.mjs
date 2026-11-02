@@ -23,8 +23,10 @@ const ok = (cond, msg, extra) => {
 };
 const eq = (a, b, msg) => ok(JSON.stringify(a) === JSON.stringify(b), msg, { 실제: a, 바람: b });
 const errors = [];
+const begun = []; // 다운로드 시작 이름 (같은 이름 파일은 덮어써져 폴더 개수로는 못 셈)
 cdp.ws.addEventListener('message', (m) => {
   const d = JSON.parse(m.data);
+  if (d.method === 'Browser.downloadWillBegin') begun.push(d.params.suggestedFilename);
   if (d.method === 'Runtime.exceptionThrown') errors.push(d.params.exceptionDetails.exception?.description || d.params.exceptionDetails.text);
   if (d.method === 'Runtime.consoleAPICalled' && d.params.type === 'error') errors.push(d.params.args.map((a) => a.value ?? a.description).join(' '));
 });
@@ -71,6 +73,12 @@ const crops = await ev(`import('./js/camera.js').then((m) => [m.crop43(3840, 216
 eq(crops, [{ x: 480, y: 0, w: 2880, h: 2160 }, { x: 0, y: 240, w: 1080, h: 1440 }, { x: 0, y: 0, w: 4000, h: 3000 }, { x: 0, y: 240, w: 1920, h: 1440 }],
   '4:3 자르기: 16:9→가운데 4:3, 세로 9:16→3:4, 4:3은 그대로');
 await shot(cdp, OUT + '1-start.png');
+eq(await ev(`[document.getElementById('s-numberOn').checked, document.getElementById('s-dateOn').checked]`), [false, false],
+  '기본값: 사진에 번호·날짜 표시 꺼짐');
+eq(await ev(`(() => { const o = document.getElementById('overlay'); const d = o.getContext('2d').getImageData(0, 0, o.width, o.height).data;
+  let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i]) n++; return n; })()`), 0, '기본값에서는 미리보기에 스탬프 없음');
+await setVal('s-numberOn', true);
+await setVal('s-dateOn', true);
 
 console.log('\n[2] 촬영 → 자동 다운로드 + 목록 보관, 번호 증가');
 await tap('#btnShutter');
@@ -175,7 +183,7 @@ eq(await ev(`document.querySelectorAll('#listGrid .list-item').length`), 3, '목
 await shot(cdp, OUT + '4-list.png');
 await tap('#btnZip');
 await sleep(300);
-ok(await waitFor(`document.getElementById('btnZip').textContent === 'ZIP으로 내보내기'`), 'ZIP 생성 완료');
+ok(await waitFor(`document.getElementById('btnZip').textContent === '전체 ZIP'`), 'ZIP 생성 완료');
 await sleep(1500);
 const zips = downloads().filter((f) => f.endsWith('.zip'));
 eq(zips.length, 1, 'ZIP 다운로드 1개');
@@ -190,6 +198,50 @@ cdp.setDialogAnswer(true);
 await tap('#vDelete');
 await sleep(600);
 eq(await ev(`document.querySelectorAll('#listGrid .list-item').length`), 2, '삭제 후 2장');
+
+console.log('\n[8-2] 목록에서 여러 장 선택 → ZIP / 다운로드 / 삭제');
+const vis = (id) => ev(`!document.getElementById(${JSON.stringify(id)}).hidden`);
+ok(await vis('listTip'), '길게 누르기 안내 표시');
+await tap('#btnSelect');
+await sleep(200);
+ok((await vis('selBar')) && !(await vis('listActions')), '선택 모드: 선택 막대로 바뀜');
+ok(await ev(`['selDownload','selZip','selShare','selDelete'].every((k) => document.getElementById(k).disabled)`), '아무것도 안 고르면 버튼 비활성');
+await tap('#listGrid .list-item');
+await sleep(200);
+eq(await text('#selCount'), '1장 선택', '사진 누르면 선택 (1장)');
+ok(!(await vis('viewer')), '선택 모드에서는 사진 보기가 안 열림');
+eq(await ev(`document.querySelectorAll('#listGrid .list-item.sel').length`), 1, '고른 사진 표시');
+await shot(cdp, OUT + '5b-select.png');
+await tap('#selAll');
+await sleep(200);
+eq([await text('#selCount'), await text('#selAll')], ['2장 선택', '선택 해제'], '전체 선택');
+const zipsBefore = downloads().filter((f) => f.endsWith('.zip')).length;
+await tap('#selZip');
+for (let t = 0; t < 50 && downloads().filter((f) => f.endsWith('.zip')).length === zipsBefore; t++) await sleep(100);
+eq(downloads().filter((f) => f.endsWith('.zip')).length, zipsBefore + 1, '선택한 사진 ZIP 다운로드');
+const begunBefore = begun.length;
+await tap('#selDownload');
+for (let t = 0; t < 50 && begun.length < begunBefore + 2; t++) await sleep(100);
+const got = begun.slice(begunBefore);
+ok(got.length === 2 && got.every((n) => n.endsWith('.jpg')), '선택한 2장을 낱장 JPG로 다운로드', got);
+await tap('#selCancel');
+await sleep(200);
+ok((await vis('listActions')) && (await ev(`document.querySelectorAll('#listGrid .list-item.sel').length`)) === 0, '취소하면 선택 풀림');
+// 길게 누르기 (터치)
+const lp = await center('#listGrid .list-item:last-child');
+await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: lp.x, y: lp.y }] });
+await sleep(800);
+await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+await sleep(300);
+ok(await vis('selBar'), '길게 누르면 선택 모드');
+eq(await text('#selCount'), '1장 선택', '길게 누른 사진이 선택됨');
+ok(!(await vis('viewer')), '길게 누른 뒤 사진 보기가 안 열림');
+cdp.setDialogAnswer(true);
+await tap('#selDelete');
+await sleep(600);
+eq(await ev(`document.querySelectorAll('#listGrid .list-item').length`), 1, '선택 삭제 후 1장');
+ok(!(await vis('selBar')), '삭제 후 선택 모드 끝남');
+eq(await text('#listCount'), '1', '배지도 1');
 await tap('#listSheet [data-close]');
 
 console.log('\n[9] 서비스워커 + 오프라인 실행');
@@ -219,7 +271,7 @@ const iconA = fileURLToPath(new URL('../icons/icon-512.png', import.meta.url));
 await cdp.send('DOM.setFileInputFiles', { files: [iconA, iconA], objectId: doc.result.objectId });
 ok(await waitFor(`document.getElementById('nextText').textContent === 'A-017'`), '갤러리 2장 → 번호 A-017');
 await sleep(500);
-eq(await text('#listCount'), '4', '목록 4장');
+eq(await text('#listCount'), '3', '목록 3장');
 await cdp.send('Page.removeScriptToEvaluateOnNewDocument', { identifier: inj.identifier });
 
 console.log('\n[11] 사진에 번호 표시 끄기');
@@ -295,6 +347,20 @@ await setVal('s-fileName', '{no}');
 await cdp.send('Page.reload');
 await sleep(800);
 eq(await ev(`document.getElementById('s-fileName').value`), '{no}', '직접 바꾼 규칙은 그대로');
+
+console.log('\n[13-2] 예전 판(사진에 표시 켜짐 기본값) 설정은 한 번 꺼 줌');
+const setStored = (patch) => ev(`(() => { const s = JSON.parse(localStorage.getItem('stampcam.settings.v1'));
+  const p = ${JSON.stringify(patch)}; for (const k in p) { if (p[k] === null) delete s[k]; else s[k] = p[k]; }
+  localStorage.setItem('stampcam.settings.v1', JSON.stringify(s)); return true; })()`);
+const shown = () => ev(`[document.getElementById('s-numberOn').checked, document.getElementById('s-dateOn').checked]`);
+await setStored({ rev: null, numberOn: true, dateOn: true });
+await cdp.send('Page.reload');
+await sleep(800);
+eq(await shown(), [false, false], '예전 판 → 꺼짐으로 옮김');
+await setVal('s-numberOn', true);
+await cdp.send('Page.reload');
+await sleep(800);
+eq(await shown(), [true, false], '옮긴 뒤 다시 켠 것은 그대로');
 
 console.log('\n[14] 콘솔 오류');
 const real = errors.filter((e) => !/NotAllowedError|denied|카메라/.test(e));

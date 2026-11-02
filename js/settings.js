@@ -3,7 +3,7 @@ const KEY = 'stampcam.settings.v1';
 
 export const DEFAULTS = {
   // 번호
-  numberOn: true,      // 사진에 번호 표시 (꺼도 번호는 파일명에 쓰이고 계속 올라감)
+  numberOn: false,     // 사진에 번호 표시 (꺼도 번호는 파일명에 쓰이고 계속 올라감)
   current: 1,          // 다음에 찍힐 번호
   start: 1,
   step: 1,
@@ -25,7 +25,7 @@ export const DEFAULTS = {
   boxColor: '#000000',
   boxOpacity: 50,      // %
   // 날짜/시간
-  dateOn: true,
+  dateOn: false,       // 사진에 날짜/시간 표시
   dateFormat: 'YYYY-MM-DD HH:mm',
   dateLayout: 'below', // below | inline
   // 저장
@@ -37,10 +37,13 @@ export const DEFAULTS = {
   facing: 'environment',
   hiRes: false,        // ImageCapture.takePhoto 사용 (실험)
   flashMode: 'off',    // off | shot(촬영할 때만) | on(계속 켜기)
+  rev: 2,              // 설정 판 번호 (아래 REV_MIGRATIONS)
 };
 
 // 예전 기본값을 그대로 쓰던 설정은 새 기본값으로 옮긴다 (직접 바꾼 값은 유지)
 const OLD_DEFAULTS = { fileName: ['{no}_{date}_{time}'] };
+// 판이 오를 때 한 번만 옮기는 값: rev 2에서 "사진에 표시" 기본값을 껐다 → 예전 판에서 켜진 채 저장된 것도 끈다
+const REV_MIGRATIONS = { 2: { numberOn: [true], dateOn: [true] } };
 
 export function loadSettings() {
   try {
@@ -56,6 +59,12 @@ export function loadSettings() {
     for (const [k, olds] of Object.entries(OLD_DEFAULTS)) {
       if (olds.includes(out[k])) out[k] = DEFAULTS[k];
     }
+    const savedRev = typeof saved.rev === 'number' ? saved.rev : 1;
+    for (const [rev, map] of Object.entries(REV_MIGRATIONS)) {
+      if (savedRev >= Number(rev)) continue;
+      for (const [k, olds] of Object.entries(map)) if (olds.includes(out[k])) out[k] = DEFAULTS[k];
+    }
+    out.rev = DEFAULTS.rev;
     return out;
   } catch (e) {
     return { ...DEFAULTS };

@@ -187,11 +187,26 @@
       <h2>촬영 목록 <small id="listSummary"></small></h2>
       <button class="btn small" data-close>닫기</button>
     </div>
-    <div class="list-actions">
-      <button id="btnZip" class="btn primary small">ZIP으로 내보내기</button>
-      <button id="btnGallery2" class="btn small">갤러리 사진 추가</button>
+    <div id="listActions" class="list-actions">
+      <button id="btnSelect" class="btn small">선택</button>
+      <button id="btnZip" class="btn primary small">전체 ZIP</button>
+      <button id="btnGallery2" class="btn small">갤러리 추가</button>
       <button id="btnClear" class="btn small danger">전체 삭제</button>
     </div>
+    <div id="selBar" class="list-actions sel-bar" hidden>
+      <div class="sel-top">
+        <b id="selCount">0장 선택</b>
+        <button id="selAll" class="btn small">전체 선택</button>
+        <button id="selCancel" class="btn small">취소</button>
+      </div>
+      <div class="sel-ops">
+        <button id="selDownload" class="btn small">다운로드</button>
+        <button id="selZip" class="btn primary small">ZIP</button>
+        <button id="selShare" class="btn small">공유</button>
+        <button id="selDelete" class="btn small danger">삭제</button>
+      </div>
+    </div>
+    <p id="listTip" class="hint" hidden>사진을 길게 누르거나 [선택]을 눌러 여러 장을 고를 수 있습니다.</p>
     <div id="listGrid" class="list-grid"></div>
     <p id="listEmpty" class="hint center" hidden>아직 촬영한 사진이 없습니다.</p>
   </section>
