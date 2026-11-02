@@ -7,7 +7,7 @@ import { addShot, deleteShot, clearShots, getShot, listShots, allShotsWithBlobs,
 import { downloadBlob, shareBlob, canvasToBlob } from './save.js';
 import { makeZip, uniqueNames } from './zip.js';
 
-const APP_VERSION = '1.1.0';
+const APP_VERSION = '1.2.0';
 const $ = (id) => document.getElementById(id);
 
 let s = loadSettings();
@@ -355,14 +355,29 @@ function fillSettingsUI() {
     if (outputs[k]) $('o-' + k).textContent = outputs[k](s[k]);
   }
   document.querySelectorAll('#s-position button').forEach((b) => b.classList.toggle('on', b.dataset.pos === s.position));
+  const presets = [...$('fileNamePreset').options].map((o) => o.value).filter(Boolean);
+  $('fileNamePreset').value = presets.includes(s.fileName) ? s.fileName : '';
   syncDisabled();
 }
+
+// 파일명: 목록에서 고르거나 "직접 입력"
+$('fileNamePreset').addEventListener('change', (e) => {
+  if (e.target.value) {
+    s.fileName = e.target.value;
+    $('s-fileName').value = s.fileName;
+    persist();
+  }
+  syncDisabled();
+  updateNext();
+  if (!e.target.value) $('s-fileName').focus();
+});
 
 function syncDisabled() {
   $('s-outlineColor').disabled = $('s-outlineWidth').disabled = !s.outline;
   $('s-boxColor').disabled = $('s-boxOpacity').disabled = !s.box;
   $('s-dateFormat').disabled = $('s-dateLayout').disabled = !s.dateOn;
   $('s-keepInList').disabled = s.saveMode === 'list';
+  $('fileNameCustom').hidden = $('fileNameTokens').hidden = $('fileNamePreset').value !== '';
 }
 
 for (const k of fields) {
@@ -559,7 +574,7 @@ $('vDelete').onclick = async () => {
 };
 
 /* ── 시작 ───────────────────────────────────────── */
-$('appVersion').textContent = 'v' + APP_VERSION;
+$('appVersion').textContent = $('appVersionTop').textContent = 'v' + APP_VERSION;
 fillSettingsUI();
 updateNext();
 refreshListBadge().then(async (items) => {
@@ -568,6 +583,23 @@ refreshListBadge().then(async (items) => {
 requestPersist();
 startCamera();
 
+// 새 버전 배포 → 서비스워커가 바뀌면 화면을 한 번 새로 읽어 바로 새 버전을 쓴다.
+// 홈 화면 앱은 껐다 켜도 백그라운드에서 그대로 돌아오므로, 다시 볼 때마다 업데이트를 확인한다.
 if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
-  navigator.serviceWorker.register('sw.js').catch((e) => console.warn('서비스워커 등록 실패', e));
+  const hadController = !!navigator.serviceWorker.controller;
+  let reloading = false;
+  navigator.serviceWorker.addEventListener('controllerchange', async () => {
+    if (!hadController || reloading) return; // 처음 설치일 때는 새로고침 불필요
+    reloading = true;
+    while (busy) await sleep(200); // 촬영·저장 중이면 끝난 뒤에
+    location.reload();
+  });
+  navigator.serviceWorker
+    .register('sw.js', { updateViaCache: 'none' })
+    .then((reg) => {
+      document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) reg.update().catch(() => {});
+      });
+    })
+    .catch((e) => console.warn('서비스워커 등록 실패', e));
 }

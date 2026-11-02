@@ -58,7 +58,7 @@
   <!-- 설정 패널 -->
   <section id="settingsSheet" class="sheet" hidden aria-label="설정">
     <div class="sheet-head">
-      <h2>설정</h2>
+      <h2>설정 <small id="appVersionTop"></small></h2>
       <button class="btn small" data-close>닫기</button>
     </div>
     <div class="sheet-body">
@@ -141,8 +141,16 @@
           <option value="list">앱 목록에만 저장 (나중에 ZIP)</option>
         </select></label>
         <label class="check"><input type="checkbox" id="s-keepInList"> 앱 촬영 목록에도 보관</label>
-        <label>파일명 규칙<input type="text" id="s-fileName"></label>
-        <p class="hint">{date} 20261029 · {no} 번호 · {time} 143012 → <b id="fileNamePreview"></b></p>
+        <label>파일명<select id="fileNamePreset">
+          <option value="{date}_{no}">날짜_번호</option>
+          <option value="{no}_{date}">번호_날짜</option>
+          <option value="{date}_{time}_{no}">날짜_시간_번호</option>
+          <option value="{no}">번호만</option>
+          <option value="">직접 입력…</option>
+        </select></label>
+        <label id="fileNameCustom">직접 입력<input type="text" id="s-fileName" autocapitalize="off" autocomplete="off"></label>
+        <p class="hint" id="fileNameTokens">{날짜} 20261102 · {번호} A-007 · {시간} 143012 을(를) 넣어 쓰세요. 예: 현장1_{날짜}_{번호}</p>
+        <p class="hint">저장될 파일명: <b id="fileNamePreview"></b></p>
         <label class="range">JPEG 품질 <output id="o-quality"></output><input type="range" id="s-quality" min="50" max="100" step="1"></label>
       </fieldset>
 

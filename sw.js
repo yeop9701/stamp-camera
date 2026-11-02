@@ -1,7 +1,11 @@
-// 오프라인 캐시: 캐시에 있으면 바로 보여주고, 뒤에서 새 버전을 받아 캐시를 갱신한다.
+// 오프라인 캐시.
+// 인터넷이 되면 항상 서버에서 새로 받고(네트워크 우선), 안 되거나 느리면 캐시로 연다.
+// GitHub Pages는 파일을 10분간 브라우저 캐시에 두라고(max-age=600) 보내므로,
+// 받을 때 브라우저 캐시를 건너뛰어야(cache: 'no-cache' / 'reload') 옛 파일이 새 버전에 섞이지 않는다.
 // 앱 파일을 바꾸면 VERSION을 올린다.
-const VERSION = 'v1.1.0';
+const VERSION = 'v1.2.0';
 const CACHE = 'stampcam-' + VERSION;
+const NETWORK_TIMEOUT_MS = 4000;
 const FILES = [
   './',
   'index.html',
@@ -21,7 +25,11 @@ const FILES = [
 ];
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(FILES)).then(() => self.skipWaiting()));
+  e.waitUntil(
+    caches.open(CACHE)
+      .then((c) => c.addAll(FILES.map((f) => new Request(f, { cache: 'reload' }))))
+      .then(() => self.skipWaiting())
+  );
 });
 
 self.addEventListener('activate', (e) => {
@@ -37,13 +45,16 @@ self.addEventListener('fetch', (e) => {
   if (req.method !== 'GET' || new URL(req.url).origin !== location.origin) return;
   e.respondWith(
     caches.open(CACHE).then(async (cache) => {
-      const cached = await cache.match(req, { ignoreSearch: true });
-      const network = fetch(req)
+      const network = fetch(req, { cache: 'no-cache' })
         .then((res) => {
           if (res.ok) cache.put(req, res.clone());
           return res;
         })
         .catch(() => null);
+      const timeout = new Promise((r) => setTimeout(() => r(null), NETWORK_TIMEOUT_MS));
+      const res = await Promise.race([network, timeout]);
+      if (res) return res;
+      const cached = await cache.match(req, { ignoreSearch: true });
       if (cached) {
         e.waitUntil(network);
         return cached;

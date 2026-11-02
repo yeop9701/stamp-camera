@@ -110,6 +110,18 @@ await tap('#s-position button[data-pos="br"]');
 await sleep(300);
 eq(await text('#nextText'), 'A-007', '접두어+번호 A-007');
 ok(/^\d{8}_A-007\.jpg$/.test(await text('#fileNamePreview')), '파일명 미리보기 갱신', await text('#fileNamePreview'));
+const squeezed = await ev(`[...document.querySelectorAll('#settingsSheet label')]
+  .filter((l) => !l.closest('[hidden]') && l.getBoundingClientRect().width < 100).map((l) => l.textContent.trim().slice(0, 15))`);
+eq(squeezed, [], '설정 항목 중 찌그러진 칸 없음');
+ok(await ev(`document.getElementById('fileNameCustom').hidden`), '파일명: 목록에서 고른 상태면 직접 입력 칸 숨김');
+await setVal('fileNamePreset', '{no}_{date}');
+ok(/^A-007_\d{8}\.jpg$/.test(await text('#fileNamePreview')), '파일명 "번호_날짜" 선택 반영', await text('#fileNamePreview'));
+await setVal('fileNamePreset', '');
+ok(!(await ev(`document.getElementById('fileNameCustom').hidden`)), '"직접 입력…" 고르면 입력 칸 표시');
+await setVal('s-fileName', '현장1_{날짜}_{번호}');
+ok(/^현장1_\d{8}_A-007\.jpg$/.test(await text('#fileNamePreview')), '한글 이름표 {날짜}{번호} 직접 입력 반영', await text('#fileNamePreview'));
+await setVal('fileNamePreset', '{date}_{no}');
+eq(await ev(`JSON.parse(localStorage.getItem('stampcam.settings.v1')).fileName`), '{date}_{no}', '날짜_번호로 되돌림 저장');
 await shot(cdp, OUT + '2-settings.png');
 await tap('#settingsSheet [data-close]');
 await sleep(300);
