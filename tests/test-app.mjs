@@ -66,13 +66,16 @@ ok(await ev(`document.getElementById('btnUndo').disabled`), '되돌리기 비활
 ok(await ev(`document.getElementById('btnFlash').disabled`), '플래시 없는 카메라 → 플래시 버튼 비활성');
 const geo = await ev(`(() => { const v = document.getElementById('video'), o = document.getElementById('overlay').getBoundingClientRect();
   return { vr: v.videoWidth / v.videoHeight, or: o.width / o.height }; })()`);
-ok(Math.abs(geo.vr - geo.or) < 0.01, '오버레이 비율 = 영상 비율', geo);
+ok(Math.abs(geo.or - 4 / 3) < 0.01, '미리보기 스탬프 영역 = 저장될 4:3 영역', geo);
+const crops = await ev(`import('./js/camera.js').then((m) => [m.crop43(3840, 2160), m.crop43(1080, 1920), m.crop43(4000, 3000), m.crop43(1920, 1920)])`);
+eq(crops, [{ x: 480, y: 0, w: 2880, h: 2160 }, { x: 0, y: 240, w: 1080, h: 1440 }, { x: 0, y: 0, w: 4000, h: 3000 }, { x: 0, y: 240, w: 1920, h: 1440 }],
+  '4:3 자르기: 16:9→가운데 4:3, 세로 9:16→3:4, 4:3은 그대로');
 await shot(cdp, OUT + '1-start.png');
 
 console.log('\n[2] 촬영 → 자동 다운로드 + 목록 보관, 번호 증가');
 await tap('#btnShutter');
 ok(await waitFor(`document.getElementById('nextText').textContent === '002'`), '촬영 후 다음 번호 002');
-await sleep(1200);
+for (let t = 0; t < 80 && !downloads().length; t++) await sleep(100);
 let dl = downloads();
 eq(dl.length, 1, '다운로드 1개');
 ok(/^\d{8}_001\.jpg$/.test(dl[0] || ''), '파일명 규칙 날짜_번호.jpg', dl);
@@ -86,7 +89,8 @@ const dims = await ev(`(async () => { const v = document.getElementById('video')
   const r = await new Promise((res) => { const q = indexedDB.open('stampcam'); q.onsuccess = () => {
     const g = q.result.transaction('shots').objectStore('shots').getAll(); g.onsuccess = () => res(g.result); }; });
   const b = await createImageBitmap(r[0].blob); return { img: [b.width, b.height], cam: [v.videoWidth, v.videoHeight], no: r[0].numberText }; })()`);
-eq(dims.img, dims.cam, '저장 이미지 해상도 = 카메라 해상도 ' + dims.cam.join('×'));
+const want = dims.cam[0] >= dims.cam[1] ? [Math.round(dims.cam[1] * 4 / 3), dims.cam[1]] : [dims.cam[0], Math.round(dims.cam[0] * 4 / 3)];
+eq(dims.img, want, `저장 이미지는 4:3 (카메라 ${dims.cam.join('×')} → ${want.join('×')})`);
 eq(dims.no, '001', '목록 항목 번호 001');
 
 console.log('\n[3] 되돌리기');
@@ -110,8 +114,10 @@ await tap('#s-position button[data-pos="br"]');
 await sleep(300);
 eq(await text('#nextText'), 'A-007', '접두어+번호 A-007');
 ok(/^\d{8}_A-007\.jpg$/.test(await text('#fileNamePreview')), '파일명 미리보기 갱신', await text('#fileNamePreview'));
-const squeezed = await ev(`[...document.querySelectorAll('#settingsSheet label')]
-  .filter((l) => !l.closest('[hidden]') && l.getBoundingClientRect().width < 100).map((l) => l.textContent.trim().slice(0, 15))`);
+// 칸 내용이 칸보다 넓어 잘리거나(내용 폭 > 칸 폭), 글자가 세로로 쪼개진(한 줄 높이의 2배 넘는 체크박스) 곳
+const squeezed = await ev(`[...document.querySelectorAll('#settingsSheet label, #settingsSheet .cell')]
+  .filter((l) => !l.closest('[hidden]') && (l.scrollWidth > l.clientWidth + 1 || (l.matches('.check') && l.getBoundingClientRect().height > 48)))
+  .map((l) => l.textContent.trim().slice(0, 15))`);
 eq(squeezed, [], '설정 항목 중 찌그러진 칸 없음');
 for (const w of [320, 390]) {
   await cdp.send('Emulation.setDeviceMetricsOverride', { width: w, height: 844, deviceScaleFactor: 2, mobile: true });

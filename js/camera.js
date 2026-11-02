@@ -17,11 +17,13 @@ export class Camera {
       throw Object.assign(new Error('이 브라우저는 카메라를 지원하지 않습니다.'), { name: 'NotSupportedError' });
     }
     this.facing = facing;
-    // 가능한 가장 큰 해상도를 요청한다 (기기가 지원하는 최대값으로 맞춰짐)
+    // 4:3에서 가능한 가장 큰 해상도를 요청한다 (기기가 지원하는 값으로 맞춰지고,
+    // 다른 비율이 오면 저장할 때 가운데를 4:3으로 자른다 — crop43)
     const video = {
       facingMode: { ideal: facing },
       width: { ideal: 4096 },
       height: { ideal: 3072 },
+      aspectRatio: { ideal: 4 / 3 },
     };
     let stream;
     try {
@@ -105,6 +107,18 @@ export class Camera {
     c.getContext('2d').drawImage(v, 0, 0);
     return { source: c, width: c.width, height: c.height, hiRes: false };
   }
+}
+
+// 가운데를 4:3(세로 사진이면 3:4)으로 자르는 영역 { x, y, w, h }
+export function crop43(width, height) {
+  const ratio = width >= height ? 4 / 3 : 3 / 4;
+  if (Math.abs(width / height - ratio) < 0.005) return { x: 0, y: 0, w: width, h: height };
+  if (width / height > ratio) {
+    const w = Math.round(height * ratio);
+    return { x: Math.round((width - w) / 2), y: 0, w, h: height };
+  }
+  const h = Math.round(width / ratio);
+  return { x: 0, y: Math.round((height - h) / 2), w: width, h };
 }
 
 function rotate90(src, dir) {

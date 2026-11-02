@@ -2,12 +2,12 @@
 import { loadSettings, saveSettings, DEFAULTS } from './settings.js';
 import { formatNumber, nextValue, formatDate, buildFileName, DATE_FORMATS } from './counter.js';
 import { drawStamp } from './stamp.js';
-import { Camera, cameraErrorMessage } from './camera.js';
+import { Camera, cameraErrorMessage, crop43 } from './camera.js';
 import { addShot, deleteShot, clearShots, getShot, listShots, allShotsWithBlobs, requestPersist } from './storage.js';
 import { downloadBlob, shareBlob, canvasToBlob } from './save.js';
 import { makeZip, uniqueNames } from './zip.js';
 
-const APP_VERSION = '1.2.1';
+const APP_VERSION = '1.3.0';
 const $ = (id) => document.getElementById(id);
 
 let s = loadSettings();
@@ -74,15 +74,18 @@ function renderOverlay() {
   }
   ov.hidden = false;
   const stage = $('stage').getBoundingClientRect();
-  // object-fit: contain 으로 그려진 실제 영상 영역
+  // object-fit: contain 으로 그려진 실제 영상 영역 안에서, 저장될 4:3 영역에만 겹친다
   const scale = Math.min(stage.width / v.videoWidth, stage.height / v.videoHeight);
-  const w = v.videoWidth * scale;
-  const h = v.videoHeight * scale;
+  const crop = crop43(v.videoWidth, v.videoHeight);
+  const w = crop.w * scale;
+  const h = crop.h * scale;
   const dpr = window.devicePixelRatio || 1;
   ov.style.width = w + 'px';
   ov.style.height = h + 'px';
-  ov.style.left = (stage.width - w) / 2 + 'px';
-  ov.style.top = (stage.height - h) / 2 + 'px';
+  ov.style.left = (stage.width - v.videoWidth * scale) / 2 + crop.x * scale + 'px';
+  ov.style.top = (stage.height - v.videoHeight * scale) / 2 + crop.y * scale + 'px';
+  // 잘려 나갈 부분은 어둡게
+  ov.classList.toggle('cropped', crop.w !== v.videoWidth || crop.h !== v.videoHeight);
   const pw = Math.round(w * dpr);
   const ph = Math.round(h * dpr);
   if (ov.width !== pw) ov.width = pw;
@@ -119,8 +122,9 @@ async function startCamera() {
 function updateResInfo() {
   const v = $('video');
   if (!v.videoWidth) return ($('resInfo').textContent = '');
-  const mp = ((v.videoWidth * v.videoHeight) / 1e6).toFixed(1);
-  $('resInfo').textContent = `지금 저장 해상도: ${v.videoWidth}×${v.videoHeight} (약 ${mp}MP)`;
+  const { w, h } = crop43(v.videoWidth, v.videoHeight);
+  const mp = ((w * h) / 1e6).toFixed(1);
+  $('resInfo').textContent = `지금 저장 해상도: ${w}×${h} (약 ${mp}MP, ${w >= h ? '4:3' : '3:4'})`;
 }
 
 function showFallback(msg) {
@@ -174,13 +178,14 @@ async function makeThumb(canvas) {
   return canvasToBlob(t, 0.7);
 }
 
-function stampToCanvas(source, width, height, date) {
+// crop: 원본에서 잘라 쓸 영역 (없으면 전체)
+function stampToCanvas(source, width, height, date, crop = { x: 0, y: 0, w: width, h: height }) {
   const c = document.createElement('canvas');
-  c.width = width;
-  c.height = height;
+  c.width = crop.w;
+  c.height = crop.h;
   const ctx = c.getContext('2d');
-  ctx.drawImage(source, 0, 0, width, height);
-  drawStamp(ctx, width, height, currentTexts(date), s);
+  ctx.drawImage(source, crop.x, crop.y, crop.w, crop.h, 0, 0, crop.w, crop.h);
+  drawStamp(ctx, crop.w, crop.h, currentTexts(date), s);
   return c;
 }
 
@@ -260,7 +265,8 @@ async function shoot() {
     void f.offsetWidth;
     f.classList.add('on');
     if (navigator.vibrate) navigator.vibrate(30);
-    const canvas = stampToCanvas(shot.source, shot.width, shot.height, date);
+    // 카메라 촬영은 항상 4:3으로 (갤러리·기본 카메라 앱 사진은 원본 비율 그대로)
+    const canvas = stampToCanvas(shot.source, shot.width, shot.height, date, crop43(shot.width, shot.height));
     await storeStamped(canvas, date);
   } catch (e) {
     console.error(e);

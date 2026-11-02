@@ -108,31 +108,42 @@ button { font: inherit; color: inherit; }
 .sheet-head h2 { margin: 0; font-size: 18px; }
 .sheet-head small { color: var(--muted); font-weight: normal; font-size: 13px; }
 .sheet-body { overflow-y: auto; overflow-x: hidden; padding: 8px 16px calc(env(safe-area-inset-bottom) + 20px); }
-fieldset { border: 0; border-bottom: 1px solid var(--line); margin: 0; padding: 12px 0 14px; }
-legend { padding: 0; font-weight: 700; color: var(--accent); font-size: 14px; margin-bottom: 8px; }
+fieldset { border: 0; border-bottom: 1px solid var(--line); margin: 0; padding: 10px 0 8px; min-width: 0; }
+legend { padding: 0; font-weight: 700; color: var(--accent); font-size: 14px; margin-bottom: 2px; }
+/* 제목 오른쪽에 켜기/끄기 */
+legend.sec-head { display: flex; align-items: center; justify-content: space-between; width: 100%; }
+legend.sec-head label.check { flex: 0 0 auto; margin: 0; font-weight: normal; font-size: 14px; }
 label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); margin: 6px 0; flex: 1; min-width: 0; }
 /* 두 칸짜리 줄: 폭이 모자라면(좁은 화면·큰 글자) 위아래로 내려간다 */
 .row { display: flex; flex-wrap: wrap; gap: 0 12px; align-items: flex-end; }
-.row > label { flex: 1 1 11em; }
-.row > label.check, .row > label.color { flex: 1 1 auto; }
-.row > .btn { margin-bottom: 6px; white-space: nowrap; }
+.row > label, .row > .cell, .row > .stack { flex: 1 1 11em; min-width: 0; }
+.cell, .stack { font-size: 13px; } /* 11em 너비 기준을 label(13px)과 맞춘다 */
+.row.mid { align-items: center; }
+/* 한 칸 안에 체크박스+색처럼 작은 것 둘 */
+.cell { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 6px 0; min-height: 44px; }
+.cell.end { justify-content: flex-end; }
+.cell > label { flex: 0 1 auto; margin: 0; }
+.stack > label { margin: 4px 0; }
+.inline { display: flex; gap: 6px; }
+.inline input { flex: 1; min-width: 0; }
+.inline .btn { flex: 0 0 auto; white-space: nowrap; padding: 8px 10px; }
 input[type=number], input[type=text], select {
   width: 100%; font: inherit; font-size: 16px; color: var(--text); background: var(--panel-2);
   border: 1px solid var(--line); border-radius: 8px; padding: 9px 10px;
 }
-label.check { flex-direction: row; align-items: center; gap: 8px; color: var(--text); font-size: 15px; }
+label.check { flex-direction: row; align-items: center; gap: 8px; color: var(--text); font-size: 15px; white-space: nowrap; }
 label.check input { width: 20px; height: 20px; accent-color: var(--accent); }
-label.color { flex-direction: row; align-items: center; justify-content: flex-end; gap: 8px; }
+label.color { flex-direction: row; align-items: center; justify-content: flex-end; gap: 8px; white-space: nowrap; }
 input[type=color] { width: 44px; height: 32px; border: 1px solid var(--line); border-radius: 6px; background: none; padding: 2px; }
 label.range { color: var(--text); font-size: 14px; display: block; }
 label.range output { color: var(--accent); float: right; }
-label.range input { width: 100%; accent-color: var(--accent); margin-top: 6px; }
+label.range input { width: 100%; accent-color: var(--accent); margin: 6px 0 0; }
 .hint { color: var(--muted); font-size: 12px; margin: 4px 0; line-height: 1.5; word-break: break-all; }
 .hint b { color: var(--text); font-weight: normal; }
 .center { text-align: center; }
 .grid9 {
-  display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; width: 150px; aspect-ratio: 4 / 3;
-  padding: 4px; background: var(--panel-2); border-radius: 8px; margin-bottom: 8px;
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; width: 100%; max-width: 150px; aspect-ratio: 4 / 3;
+  padding: 4px; background: var(--panel-2); border-radius: 8px;
 }
 .grid9 button { border: 1px solid var(--line); background: #3a3a3c; border-radius: 4px; cursor: pointer; padding: 0; }
 .grid9 button.on { background: var(--accent); border-color: var(--accent); }
@@ -165,3 +176,4 @@ label.range input { width: 100%; accent-color: var(--accent); margin-top: 6px; }
   font-size: 14px; opacity: 0; pointer-events: none; transition: opacity .2s; z-index: 30; text-align: center;
 }
 .toast.show { opacity: 1; }
+.overlay.cropped { box-shadow: 0 0 0 100vmax rgba(0, 0, 0, .55); outline: 1px solid rgba(255, 255, 255, .35); }
