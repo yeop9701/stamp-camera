@@ -2,17 +2,18 @@
 import { loadSettings, saveSettings, DEFAULTS } from './settings.js';
 import { formatNumber, nextValue, formatDate, buildFileName, DATE_FORMATS } from './counter.js';
 import { drawStamp } from './stamp.js';
-import { Camera, cameraErrorMessage, crop43 } from './camera.js';
+import { Camera, cameraErrorMessage, crop43, zoomCrop } from './camera.js';
 import { addShot, deleteShot, clearShots, getShot, listShots, allShotsWithBlobs, requestPersist } from './storage.js';
 import { downloadBlob, shareBlob, shareFiles, canvasToBlob } from './save.js';
 import { makeZip, uniqueNames } from './zip.js';
+import { shotsCsv } from './csv.js';
 
-const APP_VERSION = '1.6.0';
+const APP_VERSION = '1.7.0';
 const $ = (id) => document.getElementById(id);
 
 let s = loadSettings();
 const camera = new Camera($('video'));
-const undoStack = []; // { number, listId, numberText }
+const undoStack = []; // { number, sub, sameOn, listId, numberText }
 let busy = false;
 let lastThumbUrl = null;
 
@@ -30,9 +31,13 @@ function persist() {
   if (!saveSettings(s)) toast('설정을 저장하지 못했습니다 (저장 공간 문제).');
 }
 
+// 다음에 찍힐 번호 (같은 번호 모드면 0012-2 처럼 뒤 번호까지)
+const currentNumberText = () => formatNumber(s.current, s, s.sameOn ? s.sub : 0);
+
 function currentTexts(date) {
   return {
-    numberText: s.numberOn ? formatNumber(s.current, s) : '',
+    numberText: s.numberOn ? currentNumberText() : '',
+    memoText: s.memoOn ? s.memo.trim() : '',
     dateText: s.dateOn ? formatDate(date, s.dateFormat) : '',
   };
 }
@@ -59,20 +64,28 @@ async function applyFlash() {
 }
 
 function updateNext() {
-  $('nextText').textContent = formatNumber(s.current, s);
+  const no = currentNumberText();
+  $('nextText').textContent = no;
   $('btnUndo').disabled = undoStack.length === 0;
-  $('fileNamePreview').textContent = buildFileName(s.fileName, formatNumber(s.current, s), new Date());
+  $('btnSame').setAttribute('aria-pressed', String(s.sameOn));
+  const memo = s.memo.trim();
+  $('memoText').textContent = memo || '없음';
+  $('btnMemo').classList.toggle('has', !!memo);
+  $('fileNamePreview').textContent = buildFileName(s.fileName, no, new Date(), memo);
 }
 
 /* ── 미리보기 오버레이 ───────────────────────────── */
 function renderOverlay() {
   const ov = $('overlay');
   const v = $('video');
+  const guides = $('guides');
   if (!camera.active || !v.videoWidth) {
-    ov.hidden = true;
+    ov.hidden = guides.hidden = true;
     return;
   }
   ov.hidden = false;
+  guides.hidden = !(s.gridOn || s.levelOn);
+  guides.classList.toggle('grid', s.gridOn);
   const stage = $('stage').getBoundingClientRect();
   // object-fit: contain 으로 그려진 실제 영상 영역 안에서, 저장될 4:3 영역에만 겹친다
   const scale = Math.min(stage.width / v.videoWidth, stage.height / v.videoHeight);
@@ -84,6 +97,7 @@ function renderOverlay() {
   ov.style.height = h + 'px';
   ov.style.left = (stage.width - v.videoWidth * scale) / 2 + crop.x * scale + 'px';
   ov.style.top = (stage.height - v.videoHeight * scale) / 2 + crop.y * scale + 'px';
+  Object.assign(guides.style, { width: ov.style.width, height: ov.style.height, left: ov.style.left, top: ov.style.top });
   // 잘려 나갈 부분은 어둡게
   ov.classList.toggle('cropped', crop.w !== v.videoWidth || crop.h !== v.videoHeight);
   const pw = Math.round(w * dpr);
@@ -110,6 +124,7 @@ async function startCamera() {
     await camera.start(s.facing);
     $('btnShutter').disabled = false;
     $('btnSwitch').disabled = false;
+    resetZoom();
     updateResInfo();
     renderOverlay();
     await applyFlash();
@@ -153,6 +168,7 @@ function showFallback(msg) {
   $('camFallback').hidden = false;
   $('btnShutter').disabled = true;
   $('btnSwitch').disabled = true;
+  $('zoomBar').hidden = true;
   renderOverlay();
   updateFlashUI();
 }
@@ -169,6 +185,7 @@ $('btnSwitch').onclick = async () => {
   try {
     s.facing = await camera.switchFacing();
     persist();
+    resetZoom();
     updateResInfo();
     renderOverlay();
     await applyFlash();
@@ -199,21 +216,23 @@ async function makeThumb(canvas) {
   return canvasToBlob(t, 0.7);
 }
 
-// crop: 원본에서 잘라 쓸 영역 (없으면 전체)
-function stampToCanvas(source, width, height, date, crop = { x: 0, y: 0, w: width, h: height }) {
+// crop: 원본에서 잘라 쓸 영역 (없으면 전체), out: 저장 크기 (디지털 줌은 잘라낸 가운데를 원래 크기로 키움)
+function stampToCanvas(source, width, height, date, crop = { x: 0, y: 0, w: width, h: height }, out = crop) {
   const c = document.createElement('canvas');
-  c.width = crop.w;
-  c.height = crop.h;
+  c.width = out.w;
+  c.height = out.h;
   const ctx = c.getContext('2d');
-  ctx.drawImage(source, crop.x, crop.y, crop.w, crop.h, 0, 0, crop.w, crop.h);
-  drawStamp(ctx, crop.w, crop.h, currentTexts(date), s);
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(source, crop.x, crop.y, crop.w, crop.h, 0, 0, out.w, out.h);
+  drawStamp(ctx, out.w, out.h, currentTexts(date), s);
   return c;
 }
 
 // 스탬프 찍힌 canvas 하나를 저장 방식대로 저장하고, 성공하면 번호를 올린다.
 async function storeStamped(canvas, date, { allowShare = true } = {}) {
-  const numberText = formatNumber(s.current, s);
-  const name = buildFileName(s.fileName, numberText, date);
+  const numberText = currentNumberText();
+  const memo = s.memo.trim();
+  const name = buildFileName(s.fileName, numberText, date, memo);
   const blob = await canvasToBlob(canvas, s.quality / 100);
   const thumb = await makeThumb(canvas);
 
@@ -225,7 +244,7 @@ async function storeStamped(canvas, date, { allowShare = true } = {}) {
   if (s.keepInList || mode === 'list') {
     try {
       listId = await addShot({
-        name, numberText, createdAt: date.getTime(), blob, thumb, width: canvas.width, height: canvas.height,
+        name, numberText, memo, createdAt: date.getTime(), blob, thumb, width: canvas.width, height: canvas.height,
       });
       saved = true;
     } catch (e) {
@@ -257,9 +276,10 @@ async function storeStamped(canvas, date, { allowShare = true } = {}) {
   }
   lastSaved = { w: canvas.width, h: canvas.height, size: blob.size, quality: s.quality };
   updateResInfo();
-  undoStack.push({ number: s.current, listId, numberText });
+  undoStack.push({ number: s.current, sub: s.sub, sameOn: s.sameOn, listId, numberText });
   if (undoStack.length > 50) undoStack.shift();
-  s.current = nextValue(s.current, s);
+  if (s.sameOn) s.sub++; // 같은 번호 모드: 뒤 번호만 올림
+  else s.current = nextValue(s.current, s);
   persist();
   setLastThumb(thumb);
   updateNext();
@@ -289,7 +309,8 @@ async function shoot() {
     f.classList.add('on');
     if (navigator.vibrate) navigator.vibrate(30);
     // 카메라 촬영은 항상 4:3으로 (갤러리·기본 카메라 앱 사진은 원본 비율 그대로)
-    const canvas = stampToCanvas(shot.source, shot.width, shot.height, date, crop43(shot.width, shot.height));
+    const crop = crop43(shot.width, shot.height);
+    const canvas = stampToCanvas(shot.source, shot.width, shot.height, date, zoomCrop(crop, digitalZoom()), crop);
     await storeStamped(canvas, date);
   } catch (e) {
     console.error(e);
@@ -303,7 +324,7 @@ async function shoot() {
 $('btnShutter').onclick = shoot;
 document.addEventListener('keydown', (e) => {
   const typing = /^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement && document.activeElement.tagName);
-  if (typing || !$('settingsSheet').hidden || !$('listSheet').hidden || !$('viewer').hidden) return;
+  if (typing || !$('settingsSheet').hidden || !$('listSheet').hidden || !$('memoSheet').hidden || !$('viewer').hidden) return;
   if (e.code === 'Space' || e.code === 'Enter' || e.code === 'AudioVolumeUp' || e.code === 'AudioVolumeDown') {
     e.preventDefault();
     shoot();
@@ -350,8 +371,10 @@ $('btnUndo').onclick = async () => {
   const last = undoStack.pop();
   if (!last) return;
   s.current = last.number;
+  s.sub = last.sub;
+  s.sameOn = last.sameOn;
   persist();
-  let msg = `${last.numberText} 취소 — 다음 번호 ${formatNumber(s.current, s)}`;
+  let msg = `${last.numberText} 취소 — 다음 번호 ${currentNumberText()}`;
   if (last.listId != null) {
     try {
       await deleteShot(last.listId);
@@ -369,9 +392,9 @@ const sel = $('s-dateFormat');
 const sample = new Date();
 for (const f of DATE_FORMATS) sel.add(new Option(formatDate(sample, f), f));
 
-const fields = ['numberOn', 'current', 'start', 'step', 'pad', 'prefix', 'suffix', 'margin', 'size', 'bold', 'color',
-  'outline', 'outlineWidth', 'outlineColor', 'box', 'boxColor', 'boxOpacity', 'dateOn', 'dateFormat',
-  'dateLayout', 'saveMode', 'keepInList', 'fileName', 'quality', 'hiRes'];
+const fields = ['numberOn', 'current', 'start', 'step', 'pad', 'prefix', 'suffix', 'subSep', 'memoOn', 'memo',
+  'margin', 'size', 'bold', 'color', 'outline', 'outlineWidth', 'outlineColor', 'box', 'boxColor', 'boxOpacity',
+  'dateOn', 'dateFormat', 'dateLayout', 'saveMode', 'keepInList', 'fileName', 'quality', 'hiRes', 'gridOn', 'levelOn'];
 const outputs = {
   margin: (v) => v + '%', size: (v) => v + '%', outlineWidth: (v) => v, boxOpacity: (v) => v + '%', quality: (v) => v,
 };
@@ -420,17 +443,20 @@ for (const k of fields) {
       if (['current', 'start', 'step', 'pad'].includes(k)) v = Math.trunc(v);
     } else v = el.value;
     s[k] = v;
+    if (k === 'current') s.sub = 1; // 번호를 직접 바꾸면 뒤 번호는 1부터
     if (outputs[k]) $('o-' + k).textContent = outputs[k](v);
     persist();
     syncDisabled();
     updateNext();
     renderOverlay();
     if (k === 'hiRes') updateResInfo();
+    if (k === 'levelOn') syncLevel();
   };
   el.addEventListener('input', handler);
   el.addEventListener('change', () => {
     handler();
     if (el.type === 'number') el.value = String(s[k]); // 빈 칸·소수점 입력은 저장된 값으로 되돌림
+    if (k === 'memo') setMemo(el.value); // 입력을 마치면 최근 메모에 넣음
   });
 }
 document.querySelectorAll('#s-position button').forEach((b) => {
@@ -443,22 +469,24 @@ document.querySelectorAll('#s-position button').forEach((b) => {
 });
 $('btnResetNum').onclick = () => {
   s.current = s.start;
+  s.sub = 1;
   undoStack.length = 0;
   persist();
   fillSettingsUI();
   updateNext();
   renderOverlay();
-  toast(`다음 번호를 ${formatNumber(s.current, s)}(으)로 바꿨습니다.`);
+  toast(`다음 번호를 ${currentNumberText()}(으)로 바꿨습니다.`);
 };
 $('btnResetAll').onclick = () => {
   if (!confirm('모든 설정을 처음 상태로 되돌릴까요? (촬영 목록은 그대로)')) return;
   const facing = s.facing;
-  s = { ...DEFAULTS, facing };
+  s = { ...DEFAULTS, facing, memoRecent: s.memoRecent };
   undoStack.length = 0;
   persist();
   fillSettingsUI();
   updateNext();
   renderOverlay();
+  syncLevel();
 };
 
 function openSheet(id) {
@@ -518,7 +546,7 @@ async function refreshList() {
   const total = items.reduce((a, i) => a + i.size, 0);
   $('listSummary').textContent = items.length ? `${items.length}장 · ${(total / 1048576).toFixed(1)}MB` : '';
   $('listEmpty').hidden = items.length > 0;
-  $('btnZip').disabled = $('btnClear').disabled = $('btnSelect').disabled = items.length === 0;
+  $('btnZip').disabled = $('btnClear').disabled = $('btnSelect').disabled = $('btnCsv').disabled = items.length === 0;
   for (const it of items) {
     const b = document.createElement('button');
     b.className = 'list-item';
@@ -531,7 +559,7 @@ async function refreshList() {
     }
     img.alt = it.name;
     const cap = document.createElement('span');
-    cap.textContent = it.numberText;
+    cap.textContent = it.memo ? `${it.numberText} · ${it.memo}` : it.numberText;
     b.append(img, cap);
     bindListItem(b, it.id);
     grid.append(b);
@@ -610,8 +638,10 @@ async function exportZip(items, btn) {
   btn.textContent = 'ZIP 만드는 중…';
   try {
     const names = uniqueNames(items.map((i) => i.name));
-    const zip = await makeZip(items.map((i, n) => ({ name: names[n], blob: i.blob, date: new Date(i.createdAt) })));
-    const stamp = buildFileName('{date}_{time}', '', new Date()).replace(/\.jpg$/, '');
+    const files = items.map((i, n) => ({ name: names[n], blob: i.blob, date: new Date(i.createdAt) }));
+    files.push({ name: '목록.csv', blob: shotsCsv(items, names), date: new Date() }); // 번호·메모·시각 목록
+    const zip = await makeZip(files);
+    const stamp = nowStamp();
     downloadBlob(zip, `스탬프사진_${stamp}.zip`);
     toast(`${items.length}장을 ZIP으로 내보냈습니다.`);
   } catch (e) {
@@ -637,6 +667,12 @@ $('btnList').onclick = async () => {
 };
 
 $('btnZip').onclick = async () => exportZip(await allShotsWithBlobs(), $('btnZip'));
+const nowStamp = () => buildFileName('{date}_{time}', '', new Date()).replace(/\.jpg$/, '');
+$('btnCsv').onclick = async () => {
+  const items = await allShotsWithBlobs();
+  downloadBlob(shotsCsv(items, uniqueNames(items.map((i) => i.name))), `스탬프목록_${nowStamp()}.csv`);
+  toast(`${items.length}장 목록을 CSV로 내보냈습니다 (엑셀에서 열기).`);
+};
 
 $('btnSelect').onclick = () => setSelecting(true);
 $('selCancel').onclick = () => setSelecting(false);
@@ -692,7 +728,7 @@ async function openViewer(id) {
   if (viewerUrl) URL.revokeObjectURL(viewerUrl);
   viewerUrl = URL.createObjectURL(it.blob);
   $('viewerImg').src = viewerUrl;
-  $('viewerName').textContent = `${it.name} · ${it.width ? `${it.width}×${it.height} · ` : ''}${(it.blob.size / 1024).toFixed(0)}KB`;
+  $('viewerName').textContent = `${it.name}${it.memo ? ` (${it.memo})` : ''} · ${it.width ? `${it.width}×${it.height} · ` : ''}${(it.blob.size / 1024).toFixed(0)}KB`;
   $('viewer').hidden = false;
 }
 function closeViewer() {
@@ -720,6 +756,298 @@ $('vDelete').onclick = async () => {
   await afterDelete([id]);
 };
 
+/* ── 같은 번호로 여러 장 ─────────────────────────── */
+// 켜기: 방금 찍은 사진(뒤 번호 없음)이 있으면 그 번호에 이어서 0012 → 0012-2, 아니면 지금 번호 -1부터
+// 끄기: 같은 번호로 한 장이라도 찍었으면 다음 번호로
+$('btnSame').onclick = () => {
+  if (!s.sameOn) {
+    const top = undoStack[undoStack.length - 1];
+    const cont = top && !top.sameOn && s.current === nextValue(top.number, s);
+    if (cont) s.current = top.number;
+    s.sub = cont ? 2 : 1;
+    s.sameOn = true;
+    const after = formatNumber(nextValue(s.current, s), s);
+    toast(`같은 번호${cont ? ' 이어서' : ''}: ${currentNumberText()}, ${formatNumber(s.current, s, s.sub + 1)} … (다시 누르면 ${after})`, 3000);
+  } else {
+    if (s.sub > 1) s.current = nextValue(s.current, s);
+    s.sub = 1;
+    s.sameOn = false;
+    toast(`같은 번호 끝 — 다음 번호 ${currentNumberText()}`);
+  }
+  persist();
+  updateNext();
+  renderOverlay();
+};
+
+/* ── 메모 ───────────────────────────────────────── */
+function setMemo(v) {
+  const m = String(v || '').trim().slice(0, 60);
+  s.memo = m;
+  if (m) s.memoRecent = [m, ...s.memoRecent.filter((x) => x !== m)].slice(0, 12);
+  persist();
+  updateNext();
+  renderOverlay();
+  if (!$('settingsSheet').hidden) $('s-memo').value = m;
+}
+
+function renderMemoRecent() {
+  const box = $('memoRecent');
+  box.textContent = '';
+  $('memoRecentHint').hidden = s.memoRecent.length === 0;
+  for (const m of s.memoRecent) {
+    const chip = document.createElement('span');
+    chip.className = 'chip' + (m === s.memo ? ' cur' : '');
+    const pick = document.createElement('button');
+    pick.type = 'button';
+    pick.textContent = m;
+    pick.onclick = () => {
+      setMemo(m);
+      $('memoSheet').hidden = true;
+      toast(`메모: ${m}`);
+    };
+    const x = document.createElement('button');
+    x.type = 'button';
+    x.className = 'x';
+    x.textContent = '×';
+    x.setAttribute('aria-label', `${m} 최근 메모에서 지우기`);
+    x.onclick = () => {
+      s.memoRecent = s.memoRecent.filter((r) => r !== m);
+      persist();
+      renderMemoRecent();
+    };
+    chip.append(pick, x);
+    box.append(chip);
+  }
+}
+
+$('btnMemo').onclick = () => {
+  $('memoInput').value = s.memo;
+  $('memoOn2').checked = s.memoOn;
+  renderMemoRecent();
+  openSheet('memoSheet');
+  setTimeout(() => {
+    $('memoInput').focus();
+    $('memoInput').select();
+  }, 50);
+};
+$('memoForm').onsubmit = (e) => {
+  e.preventDefault();
+  setMemo($('memoInput').value);
+  $('memoInput').blur();
+  $('memoSheet').hidden = true;
+  toast(s.memo ? `메모: ${s.memo}` : '메모 없음');
+};
+$('memoNone').onclick = () => {
+  setMemo('');
+  $('memoSheet').hidden = true;
+  toast('메모 없음');
+};
+$('memoOn2').onchange = (e) => {
+  s.memoOn = e.target.checked;
+  persist();
+  renderOverlay();
+};
+$('btnMemoClear').onclick = () => setMemo('');
+
+/* ── 줌 ─────────────────────────────────────────── */
+// 카메라가 줌을 지원하면 카메라 줌(광학/센서), 아니면 미리보기와 저장 사진을 가운데로 잘라 키우는 디지털 줌
+const DIGITAL_ZOOM_MAX = 4;
+let zoom = 1;
+let zoomHw = null; // { min, max, step } 또는 null
+const digitalZoom = () => (zoomHw ? 1 : zoom);
+const zoomLimits = () => (zoomHw ? { min: zoomHw.min, max: zoomHw.max } : { min: 1, max: DIGITAL_ZOOM_MAX });
+const fmtZoom = (z) => (Math.abs(z - Math.round(z)) < 0.05 ? String(Math.round(z)) : z.toFixed(1)) + '×';
+
+function zoomPresets() {
+  const { min, max } = zoomLimits();
+  const list = [min < 1 ? min : null, 1, 2, 4, 10].filter((v) => v != null && v >= min - 1e-6 && v <= max + 1e-6);
+  return [...new Set(list)];
+}
+
+function renderZoomBar() {
+  const bar = $('zoomBar');
+  const presets = zoomPresets();
+  bar.hidden = !camera.active || presets.length < 2;
+  if (bar.hidden) return;
+  // 지금 배율에 가장 가까운(같거나 아래) 단계 버튼이 켜지고, 그 버튼에 지금 배율이 보인다
+  let on = 0;
+  presets.forEach((v, n) => (zoom >= v - 0.05 ? (on = n) : 0));
+  if (bar.children.length !== presets.length) {
+    bar.textContent = '';
+    for (const v of presets) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.onclick = () => setZoom(v);
+      bar.append(b);
+    }
+  }
+  [...bar.children].forEach((b, n) => {
+    b.dataset.z = presets[n];
+    b.classList.toggle('on', n === on);
+    b.textContent = n === on ? fmtZoom(zoom) : fmtZoom(presets[n]);
+    b.setAttribute('aria-label', `${fmtZoom(presets[n])} 확대`);
+  });
+}
+
+let zoomBusy = false;
+let zoomWanted = null;
+async function applyHwZoom(z) {
+  zoomWanted = z;
+  if (zoomBusy) return;
+  zoomBusy = true;
+  while (zoomWanted != null) {
+    const v = zoomWanted;
+    zoomWanted = null;
+    await camera.setZoom(v);
+  }
+  zoomBusy = false;
+}
+
+function setZoom(z) {
+  const { min, max } = zoomLimits();
+  zoom = Math.min(max, Math.max(min, z));
+  if (zoomHw) applyHwZoom(zoom);
+  $('stage').style.setProperty('--dz', String(digitalZoom()));
+  renderZoomBar();
+}
+
+function resetZoom() {
+  zoomHw = camera.zoomRange;
+  setZoom(1);
+}
+
+/* ── 눌러서 초점 · 두 손가락 확대 ─────────────────── */
+let focusWarned = false;
+async function focusTap(cx, cy) {
+  const v = $('video');
+  if (!camera.active || !v.videoWidth) return;
+  const r = $('stage').getBoundingClientRect();
+  const dz = digitalZoom();
+  // 화면 위치 → 영상 안 위치(0~1): 디지털 줌(가운데 기준 확대)과 object-fit: contain 여백을 되돌린다
+  const x = r.width / 2 + (cx - r.left - r.width / 2) / dz;
+  const y = r.height / 2 + (cy - r.top - r.height / 2) / dz;
+  const scale = Math.min(r.width / v.videoWidth, r.height / v.videoHeight);
+  const vw = v.videoWidth * scale;
+  const vh = v.videoHeight * scale;
+  let nx = (x - (r.width - vw) / 2) / vw;
+  const ny = (y - (r.height - vh) / 2) / vh;
+  if (nx < 0 || nx > 1 || ny < 0 || ny > 1) return;
+  if (camera.facing === 'user') nx = 1 - nx; // 전면은 미리보기가 좌우 반전
+  const ring = $('focusRing');
+  ring.hidden = true;
+  ring.classList.remove('fail');
+  void ring.offsetWidth;
+  Object.assign(ring.style, { left: cx - r.left + 'px', top: cy - r.top + 'px' });
+  ring.hidden = false;
+  const ok = await camera.focusAt(nx, ny);
+  ring.classList.toggle('fail', !ok);
+  if (!ok && !focusWarned) {
+    focusWarned = true;
+    toast('이 카메라는 눌러서 초점 맞추기를 지원하지 않습니다 (자동 초점으로 찍힙니다).', 3000);
+  }
+}
+$('focusRing').addEventListener('animationend', () => ($('focusRing').hidden = true));
+
+{
+  const stage = $('stage');
+  const pts = new Map();
+  let pinch = null;
+  let tap = null;
+  const dist = () => {
+    const [a, b] = [...pts.values()];
+    return Math.hypot(a.x - b.x, a.y - b.y);
+  };
+  stage.addEventListener('pointerdown', (e) => {
+    if (e.target.closest('button, .fallback')) return;
+    pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pts.size === 1) tap = { id: e.pointerId, x: e.clientX, y: e.clientY, t: performance.now() };
+    else {
+      tap = null;
+      if (pts.size === 2) pinch = { d: dist(), z: zoom };
+    }
+  });
+  stage.addEventListener('pointermove', (e) => {
+    if (!pts.has(e.pointerId)) return;
+    pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (tap && Math.hypot(e.clientX - tap.x, e.clientY - tap.y) > 12) tap = null;
+    if (pinch && pts.size >= 2) {
+      const d = dist();
+      if (pinch.d > 0) setZoom(pinch.z * (d / pinch.d));
+    }
+  });
+  const end = (e) => {
+    if (!pts.has(e.pointerId)) return;
+    pts.delete(e.pointerId);
+    if (e.type === 'pointerup' && tap && tap.id === e.pointerId && performance.now() - tap.t < 600) focusTap(e.clientX, e.clientY);
+    tap = null;
+    if (pts.size < 2) pinch = null;
+  };
+  stage.addEventListener('pointerup', end);
+  stage.addEventListener('pointercancel', end);
+}
+
+/* ── 수평 표시 ──────────────────────────────────── */
+// 가속도(중력) 방향으로 기울기를 잰다. 세워 들면 수평선, 눕혀 들면(바닥·천장 촬영) 기포
+let motionOn = false;
+let gravity = null;
+let levelRaf = 0;
+function onMotion(e) {
+  const g = e.accelerationIncludingGravity;
+  if (!g || g.x == null || g.y == null) return;
+  gravity = { x: g.x, y: g.y, z: g.z || 0 };
+  if (!levelRaf) levelRaf = requestAnimationFrame(drawLevel);
+}
+function screenAngle() {
+  const o = screen.orientation;
+  return (o && typeof o.angle === 'number' ? o.angle : window.orientation) || 0;
+}
+function drawLevel() {
+  levelRaf = 0;
+  const line = $('levelLine');
+  const bubble = $('levelBubble');
+  if (!s.levelOn || !gravity) {
+    line.hidden = bubble.hidden = true;
+    return;
+  }
+  const { x, y, z } = gravity;
+  const a = screenAngle();
+  if (Math.hypot(x, y) >= Math.abs(z)) {
+    let roll = (Math.atan2(x, y) * 180) / Math.PI - a;
+    roll = ((((roll + 180) % 360) + 360) % 360) - 180;
+    line.hidden = false;
+    bubble.hidden = true;
+    line.style.setProperty('--roll', roll.toFixed(1) + 'deg');
+    line.classList.toggle('ok', Math.abs(roll) < 1);
+    line.dataset.roll = roll.toFixed(1);
+  } else {
+    // 기포는 높은 쪽으로 간다 → 수평 성분의 반대, 화면 회전만큼 돌려서
+    const rad = (a * Math.PI) / 180;
+    const ux = -x;
+    const uy = -y;
+    const sx = ux * Math.cos(rad) - uy * Math.sin(rad);
+    const sy = ux * Math.sin(rad) + uy * Math.cos(rad);
+    const k = 21 / 4.9; // 약 30° 기울면 가장자리
+    const clamp = (v) => Math.max(-21, Math.min(21, v));
+    line.hidden = true;
+    bubble.hidden = false;
+    bubble.style.setProperty('--bx', clamp(sx * k).toFixed(1) + 'px');
+    bubble.style.setProperty('--by', clamp(-sy * k).toFixed(1) + 'px');
+    bubble.classList.toggle('ok', Math.hypot(x, y) < 0.17); // 약 1°
+  }
+}
+function syncLevel() {
+  if (s.levelOn && !motionOn) {
+    window.addEventListener('devicemotion', onMotion);
+    motionOn = true;
+  } else if (!s.levelOn && motionOn) {
+    window.removeEventListener('devicemotion', onMotion);
+    motionOn = false;
+    gravity = null;
+  }
+  drawLevel();
+  renderOverlay();
+}
+
 /* ── 시작 ───────────────────────────────────────── */
 $('appVersion').textContent = $('appVersionTop').textContent = 'v' + APP_VERSION;
 fillSettingsUI();
@@ -728,6 +1056,7 @@ refreshListBadge().then(async (items) => {
   if (items[0] && items[0].thumb) setLastThumb(items[0].thumb);
 });
 requestPersist();
+syncLevel();
 startCamera();
 
 // 새 버전 배포 → 서비스워커가 바뀌면 화면을 한 번 새로 읽어 바로 새 버전을 쓴다.

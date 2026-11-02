@@ -1,4 +1,6 @@
-// 카메라 스트림 시작/전환/캡처.
+// 카메라 스트림 시작/전환/캡처, 줌·초점.
+
+export const FOCUS_HOLD_MS = 6000; // 눌러서 맞춘 초점을 유지하는 시간
 
 export class Camera {
   constructor(video) {
@@ -67,6 +69,58 @@ export class Camera {
       console.warn('플래시 제어 실패', e);
       return false;
     }
+  }
+
+  caps() {
+    const t = this.track;
+    try {
+      return (t && t.getCapabilities && t.getCapabilities()) || {};
+    } catch (e) {
+      return {};
+    }
+  }
+
+  // 카메라 자체 줌 범위 { min, max, step } — 지원 안 하면 null (그때는 화면에서 디지털 줌)
+  get zoomRange() {
+    const z = this.caps().zoom;
+    return z && z.max > z.min ? { min: z.min, max: z.max, step: z.step || 0.1 } : null;
+  }
+
+  async setZoom(z) {
+    if (!this.zoomRange) return false;
+    try {
+      await this.track.applyConstraints({ advanced: [{ zoom: z }] });
+      return true;
+    } catch (e) {
+      console.warn('줌 실패', e);
+      return false;
+    }
+  }
+
+  // 눌러서 초점: x, y는 영상 안 위치(0~1). 지원 안 하면 false
+  // 한 번 맞추기(single-shot)로 그 자리에 초점을 잡고, 잠시 뒤 연속 자동 초점으로 돌린다
+  // (계속 잠가 두면 다음 결함으로 옮겨 찍을 때 흐려진다)
+  async focusAt(x, y) {
+    const c = this.caps();
+    const modes = c.focusMode || [];
+    if (!modes.length || !(modes.includes('single-shot') || modes.includes('continuous'))) return false;
+    const point = { x: Math.min(1, Math.max(0, x)), y: Math.min(1, Math.max(0, y)) };
+    const one = { pointsOfInterest: [point], focusMode: modes.includes('single-shot') ? 'single-shot' : 'continuous' };
+    if ((c.exposureMode || []).includes('continuous')) one.exposureMode = 'continuous';
+    try {
+      await this.track.applyConstraints({ advanced: [one] });
+    } catch (e) {
+      console.warn('초점 맞추기 실패', e);
+      return false;
+    }
+    clearTimeout(this.focusTimer);
+    if (one.focusMode === 'single-shot' && modes.includes('continuous')) {
+      const track = this.track;
+      this.focusTimer = setTimeout(() => {
+        if (this.track === track) track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }).catch(() => {});
+      }, FOCUS_HOLD_MS);
+    }
+    return true;
   }
 
   // 고화질 촬영(takePhoto)의 최대 크기 (센서 방향 그대로). 모르면 null
@@ -139,6 +193,14 @@ export class Camera {
     c.getContext('2d').drawImage(v, 0, 0);
     return { source: c, width: c.width, height: c.height, hiRes: false };
   }
+}
+
+// 디지털 줌: 영역의 가운데 1/z 만 남긴다
+export function zoomCrop(crop, z) {
+  if (!(z > 1)) return crop;
+  const w = Math.round(crop.w / z);
+  const h = Math.round(crop.h / z);
+  return { x: crop.x + Math.round((crop.w - w) / 2), y: crop.y + Math.round((crop.h - h) / 2), w, h };
 }
 
 // 가운데를 4:3(세로 사진이면 3:4)으로 자르는 영역 { x, y, w, h }

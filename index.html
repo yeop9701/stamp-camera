@@ -20,6 +20,9 @@
       <span class="next-label">다음</span>
       <span id="nextText" class="next-text">0001</span>
     </button>
+    <button id="btnSame" class="icon-btn same-btn" aria-pressed="false" aria-label="같은 번호로 여러 장 찍기">
+      <span class="same-top">같은</span><span class="same-bot">번호</span>
+    </button>
     <button id="btnFlash" class="icon-btn flash-btn" aria-label="플래시" data-mode="off" disabled>
       <svg viewBox="0 0 24 24"><path d="M7 2v11h3v9l7-12h-4l3-8z"/></svg>
       <span id="flashLabel" class="flash-label"></span>
@@ -32,6 +35,13 @@
   <main id="stage" class="stage">
     <video id="video" playsinline muted autoplay></video>
     <canvas id="overlay" class="overlay"></canvas>
+    <div id="guides" class="guides" hidden>
+      <div id="levelLine" class="level-line" hidden></div>
+      <div id="levelBubble" class="level-bubble" hidden><span></span></div>
+    </div>
+    <div id="focusRing" class="focus-ring" hidden></div>
+    <button id="btnMemo" class="memo-chip" aria-label="메모 (위치·부재명) 입력"><span class="memo-ico">메모</span><span id="memoText" class="memo-text">없음</span></button>
+    <div id="zoomBar" class="zoom-bar" hidden></div>
     <div id="flash" class="flash"></div>
     <div id="camFallback" class="fallback" hidden>
       <p id="camError" class="fallback-msg">카메라를 시작하는 중…</p>
@@ -82,6 +92,22 @@
           <label>접두어<input type="text" id="s-prefix" placeholder="예: A-"></label>
           <label>접미어<input type="text" id="s-suffix" placeholder="예: 번"></label>
         </div>
+        <div class="row">
+          <label>같은 번호 뒤 번호<select id="s-subSep">
+            <option value="-">0012-1, 0012-2</option>
+            <option value="_">0012_1, 0012_2</option>
+            <option value=".">0012.1, 0012.2</option>
+          </select></label>
+          <p class="hint cell">촬영 화면 [같은 번호]를 켜면 번호는 그대로 두고 뒤 번호만 올라갑니다. 끄면 다음 번호로.</p>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend class="sec-head">메모 <label class="check"><input type="checkbox" id="s-memoOn"> 사진에 표시</label></legend>
+        <div class="row">
+          <label>지금 메모<span class="inline"><input type="text" id="s-memo" placeholder="예: 3층 C2 기둥" autocomplete="off"><button id="btnMemoClear" class="btn small" type="button">지우기</button></span></label>
+        </div>
+        <p class="hint">촬영 화면 위쪽 [메모]를 눌러도 바꿀 수 있습니다. 파일명 규칙에 {메모}가 있으면 파일명에 들어갑니다 (비어 있으면 빠짐).</p>
       </fieldset>
 
       <fieldset>
@@ -139,6 +165,14 @@
       </fieldset>
 
       <fieldset>
+        <legend>화면 보조 <small class="legend-note">사진에는 찍히지 않음</small></legend>
+        <div class="row mid">
+          <div class="cell"><label class="check"><input type="checkbox" id="s-gridOn"> 격자선 (3×3)</label></div>
+          <div class="cell"><label class="check"><input type="checkbox" id="s-levelOn"> 수평 표시</label></div>
+        </div>
+      </fieldset>
+
+      <fieldset>
         <legend>저장</legend>
         <div class="row">
           <label>저장 방식<select id="s-saveMode">
@@ -147,15 +181,15 @@
             <option value="list">앱 목록에만 (ZIP)</option>
           </select></label>
           <label>파일명<select id="fileNamePreset">
-            <option value="{date}_{no}">날짜_번호</option>
-            <option value="{no}_{date}">번호_날짜</option>
-            <option value="{date}_{time}_{no}">날짜_시간_번호</option>
-            <option value="{no}">번호만</option>
+            <option value="{date}_{no}_{memo}">날짜_번호_메모</option>
+            <option value="{no}_{memo}_{date}">번호_메모_날짜</option>
+            <option value="{date}_{time}_{no}_{memo}">날짜_시간_번호_메모</option>
+            <option value="{no}_{memo}">번호_메모</option>
             <option value="">직접 입력…</option>
           </select></label>
         </div>
         <label id="fileNameCustom">직접 입력<input type="text" id="s-fileName" autocapitalize="off" autocomplete="off"></label>
-        <p class="hint" id="fileNameTokens">{날짜} 20261102 · {번호} A-007 · {시간} 143012 을(를) 넣어 쓰세요. 예: 현장1_{날짜}_{번호}</p>
+        <p class="hint" id="fileNameTokens">{날짜} 20261102 · {번호} A-007 · {시간} 143012 · {메모} 을(를) 넣어 쓰세요. 예: 현장1_{날짜}_{번호}_{메모}</p>
         <p class="hint">저장될 파일명: <b id="fileNamePreview"></b></p>
         <div class="row mid">
           <div class="cell">
@@ -182,6 +216,26 @@
     </div>
   </section>
 
+  <!-- 메모 입력 -->
+  <section id="memoSheet" class="sheet" hidden aria-label="메모">
+    <div class="sheet-head">
+      <h2>메모 <small>위치·부재명</small></h2>
+      <button class="btn small" data-close>닫기</button>
+    </div>
+    <div class="sheet-body">
+      <form id="memoForm" class="memo-form">
+        <input type="text" id="memoInput" placeholder="예: 3층 C2 기둥" autocomplete="off" enterkeyhint="done">
+        <button class="btn primary" type="submit">확인</button>
+      </form>
+      <div class="memo-ops">
+        <button id="memoNone" class="btn small" type="button">메모 없이 찍기</button>
+        <label class="check"><input type="checkbox" id="memoOn2"> 사진에 표시</label>
+      </div>
+      <p class="hint" id="memoRecentHint">최근 메모 (눌러서 고르기, ×로 지우기)</p>
+      <div id="memoRecent" class="memo-recent"></div>
+    </div>
+  </section>
+
   <!-- 촬영 목록 -->
   <section id="listSheet" class="sheet full" hidden aria-label="촬영 목록">
     <div class="sheet-head">
@@ -191,6 +245,7 @@
     <div id="listActions" class="list-actions">
       <button id="btnSelect" class="btn small">선택</button>
       <button id="btnZip" class="btn primary small">전체 ZIP</button>
+      <button id="btnCsv" class="btn small">목록 CSV</button>
       <button id="btnGallery2" class="btn small">갤러리 추가</button>
       <button id="btnClear" class="btn small danger">전체 삭제</button>
     </div>

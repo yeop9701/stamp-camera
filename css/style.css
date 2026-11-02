@@ -37,6 +37,10 @@ button { font: inherit; color: inherit; }
   position: absolute; bottom: 0; left: 0; right: 0; font-size: 10px; line-height: 1; color: var(--accent); pointer-events: none;
 }
 .flash-btn[data-mode="off"] .flash-label { color: var(--muted); }
+/* 같은 번호 버튼: 켜지면 노란 바탕 */
+.same-btn { display: flex; flex-direction: column; justify-content: center; gap: 0; line-height: 1.1; font-size: 12px; color: var(--muted); border: 1px solid var(--line); }
+.same-btn[aria-pressed="true"] { background: var(--accent); color: #000; border-color: var(--accent); font-weight: 700; }
+.same-btn[aria-pressed="true"]:active { background: var(--accent); }
 .flash-btn[data-mode="off"]:not(:disabled) svg { fill: var(--text); }
 .icon-btn.round { border-radius: 50%; background: var(--panel-2); width: 52px; height: 52px; }
 .next {
@@ -48,8 +52,9 @@ button { font: inherit; color: inherit; }
 
 /* 미리보기 */
 .stage { position: relative; flex: 1; min-height: 0; overflow: hidden; background: #000; }
-.stage video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
-.stage video.mirror { transform: scaleX(-1); }
+.stage { touch-action: none; }
+.stage video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; transform: scale(var(--dz, 1)); }
+.stage video.mirror { transform: scale(calc(-1 * var(--dz, 1)), var(--dz, 1)); }
 .overlay { position: absolute; pointer-events: none; }
 .flash { position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; }
 .flash.on { animation: flash .25s ease-out; }
@@ -189,12 +194,90 @@ label.range input { width: 100%; accent-color: var(--accent); margin: 6px 0 0; }
 .viewer-bar div { display: flex; gap: 8px; flex-wrap: wrap; }
 
 .toast {
-  position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom) + 120px); transform: translateX(-50%);
+  position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom) + 170px); transform: translateX(-50%);
   max-width: calc(100% - 32px); background: rgba(40,40,40,.95); color: #fff; padding: 10px 16px; border-radius: 20px;
   font-size: 14px; opacity: 0; pointer-events: none; transition: opacity .2s; z-index: 30; text-align: center;
 }
 .toast.show { opacity: 1; }
 .overlay.cropped { box-shadow: 0 0 0 100vmax rgba(0, 0, 0, .55); outline: 1px solid rgba(255, 255, 255, .35); }
+
+/* 화면 보조: 격자선·수평 (4:3 저장 영역 위, 사진에는 안 찍힘) */
+.guides { position: absolute; pointer-events: none; }
+.guides.grid {
+  background:
+    linear-gradient(to right, transparent calc(33.333% - .5px), rgba(255,255,255,.45) calc(33.333% - .5px), rgba(255,255,255,.45) calc(33.333% + .5px), transparent calc(33.333% + .5px),
+      transparent calc(66.667% - .5px), rgba(255,255,255,.45) calc(66.667% - .5px), rgba(255,255,255,.45) calc(66.667% + .5px), transparent calc(66.667% + .5px)),
+    linear-gradient(to bottom, transparent calc(33.333% - .5px), rgba(255,255,255,.45) calc(33.333% - .5px), rgba(255,255,255,.45) calc(33.333% + .5px), transparent calc(33.333% + .5px),
+      transparent calc(66.667% - .5px), rgba(255,255,255,.45) calc(66.667% - .5px), rgba(255,255,255,.45) calc(66.667% + .5px), transparent calc(66.667% + .5px));
+}
+.level-line {
+  position: absolute; left: 30%; right: 30%; top: 50%; height: 0; border-top: 2px solid rgba(255,255,255,.85);
+  transform: rotate(var(--roll, 0deg)); box-shadow: 0 0 2px rgba(0,0,0,.8);
+}
+.level-line.ok { border-color: var(--accent); }
+.level-bubble {
+  position: absolute; left: 50%; top: 50%; width: 56px; height: 56px; margin: -28px 0 0 -28px; border-radius: 50%;
+  border: 2px solid rgba(255,255,255,.7); box-shadow: 0 0 2px rgba(0,0,0,.8);
+}
+.level-bubble span {
+  position: absolute; left: 50%; top: 50%; width: 14px; height: 14px; margin: -7px 0 0 -7px; border-radius: 50%;
+  background: rgba(255,255,255,.9); transform: translate(var(--bx, 0px), var(--by, 0px));
+}
+.level-bubble.ok { border-color: var(--accent); }
+.level-bubble.ok span { background: var(--accent); }
+
+/* 눌러서 초점 표시 */
+.focus-ring {
+  position: absolute; width: 72px; height: 72px; margin: -36px 0 0 -36px; border: 2px solid var(--accent); border-radius: 50%;
+  pointer-events: none; animation: focus .6s ease-out forwards;
+}
+.focus-ring.fail { border-color: #fff; border-style: dashed; }
+@keyframes focus { from { transform: scale(1.4); opacity: 1; } 70% { transform: scale(1); opacity: 1; } to { transform: scale(1); opacity: .0; } }
+
+/* 메모 칩 (촬영 화면 위쪽 가운데) */
+.memo-chip {
+  position: absolute; top: 10px; left: 50%; transform: translateX(-50%); z-index: 2; max-width: calc(100% - 24px);
+  display: flex; align-items: center; gap: 8px; border: 1px solid rgba(255,255,255,.25); border-radius: 18px;
+  background: rgba(0,0,0,.55); padding: 6px 12px; font-size: 14px; cursor: pointer;
+}
+.memo-ico { color: var(--muted); font-size: 12px; flex: 0 0 auto; }
+.memo-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; color: var(--muted); }
+.memo-chip.has .memo-text { color: var(--accent); font-weight: 700; }
+
+/* 줌 (촬영 화면 아래쪽 가운데) */
+.zoom-bar {
+  position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%); z-index: 2;
+  display: flex; gap: 6px; padding: 4px; border-radius: 22px; background: rgba(0,0,0,.45);
+}
+.zoom-bar button {
+  min-width: 40px; height: 36px; border: 0; border-radius: 18px; background: transparent; color: #fff;
+  font-size: 13px; font-weight: 700; cursor: pointer; padding: 0 8px;
+}
+.zoom-bar button.on { background: rgba(255,255,255,.18); color: var(--accent); }
+
+/* 메모 입력 창 */
+.memo-form { display: flex; gap: 8px; margin: 10px 0 6px; }
+.memo-form input { flex: 1; min-width: 0; }
+.memo-ops { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 6px 0 10px; }
+.memo-ops label.check { flex: 0 0 auto; margin: 0; }
+.memo-recent { display: flex; flex-wrap: wrap; gap: 8px; padding-bottom: 8px; }
+.memo-recent .chip {
+  display: inline-flex; align-items: center; max-width: 100%; border: 1px solid var(--line); border-radius: 18px;
+  background: var(--panel-2); overflow: hidden;
+}
+.memo-recent .chip button { border: 0; background: transparent; cursor: pointer; font-size: 15px; padding: 8px 4px 8px 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.memo-recent .chip button.x { color: var(--muted); padding: 8px 12px 8px 8px; flex: 0 0 auto; }
+.memo-recent .chip.cur { border-color: var(--accent); }
+.legend-note { color: var(--muted); font-weight: normal; font-size: 12px; margin-left: 6px; }
+.row > p.hint.cell { display: block; min-height: 0; margin: 6px 0; }
+
+/* 좁은 세로 화면: 위 막대 버튼을 줄여 다음 번호 칸을 넓힌다 */
+@media (max-width: 360px) and (orientation: portrait) {
+  .topbar { gap: 4px; padding-left: 6px; padding-right: 6px; }
+  .topbar .icon-btn { width: 38px; }
+  .next { padding: 4px 6px; gap: 6px; }
+  .next-text { font-size: 20px; }
+}
 
 /* 가로 화면: 위·아래 막대를 왼쪽·오른쪽 세로 막대로 (미리보기를 최대한 크게) */
 @media (orientation: landscape) {
@@ -216,5 +299,6 @@ label.range input { width: 100%; accent-color: var(--accent); margin: 6px 0 0; }
   .viewer img { width: auto; min-width: 0; flex: 1; height: 100%; }
   .viewer-bar { width: 200px; justify-content: center; }
   .viewer-bar div { flex-direction: column; }
-  .toast { bottom: 24px; }
+  .toast { bottom: 70px; }
+  .same-btn { flex: 0 0 auto; }
 }

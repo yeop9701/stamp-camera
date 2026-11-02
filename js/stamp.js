@@ -2,6 +2,7 @@
 // 크기·여백은 모두 사진 짧은 변 기준 비율이라 해상도가 달라도 모양이 같다.
 
 const DATE_RATIO = 0.6; // 아래 줄 날짜 글자 크기 (번호 대비)
+const MEMO_RATIO = 0.7; // 메모 줄 글자 크기 (번호 대비)
 
 function hexToRgba(hex, alpha) {
   const m = /^#?([0-9a-f]{6})$/i.exec(hex || '');
@@ -16,14 +17,13 @@ export function drawStamp(ctx, w, h, texts, s) {
   const weight = s.bold ? 'bold' : 'normal';
   const family = 'system-ui, "Noto Sans KR", "Malgun Gothic", sans-serif';
 
-  // 줄 구성 (번호 표시를 끄면 numberText가 빈 문자열 → 날짜만, 날짜 크기는 그대로)
+  // 줄 구성: 번호(+옆 날짜) / 메모 / 날짜. 빈 문자열은 빠진다 (번호를 끄면 메모·날짜만, 크기는 그대로)
   const lines = [];
-  if (texts.numberText && texts.dateText && s.dateLayout === 'inline') {
-    lines.push({ text: `${texts.numberText}  ${texts.dateText}`, px: fontPx });
-  } else {
-    if (texts.numberText) lines.push({ text: texts.numberText, px: fontPx });
-    if (texts.dateText) lines.push({ text: texts.dateText, px: fontPx * DATE_RATIO });
-  }
+  const inline = texts.numberText && texts.dateText && s.dateLayout === 'inline';
+  if (inline) lines.push({ text: `${texts.numberText}  ${texts.dateText}`, px: fontPx });
+  else if (texts.numberText) lines.push({ text: texts.numberText, px: fontPx });
+  if (texts.memoText) lines.push({ text: texts.memoText, px: fontPx * MEMO_RATIO });
+  if (texts.dateText && !inline) lines.push({ text: texts.dateText, px: fontPx * DATE_RATIO });
   if (!lines.length) return;
   fontPx = Math.max(...lines.map((l) => l.px)); // 여백·외곽선·박스 크기의 기준
 
