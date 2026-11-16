@@ -40,6 +40,7 @@ export const DEFAULTS = {
   saveMode: 'download',  // download | share | list
   keepInList: true,
   fileName: '{date}_{no}_{memo}', // 메모가 비면 {memo}와 그 앞 _ 는 빠진다
+  camName: 'KIM',      // 파일명 {cam} — 점검 앱의 카메라명(K = KIM, C = CHOI 처럼)
   quality: 92,
   // 카메라
   facing: 'environment',

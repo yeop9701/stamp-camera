@@ -8,7 +8,7 @@ import { downloadBlob, shareBlob, shareFiles, canvasToBlob } from './save.js';
 import { makeZip, uniqueNames } from './zip.js';
 import { shotsCsv } from './csv.js';
 
-const APP_VERSION = '1.8.0';
+const APP_VERSION = '1.9.0';
 const $ = (id) => document.getElementById(id);
 
 let s = loadSettings();
@@ -71,7 +71,7 @@ function updateNext() {
   const memo = s.memo.trim();
   $('memoText').textContent = memo || '없음';
   $('btnMemo').classList.toggle('has', !!memo);
-  $('fileNamePreview').textContent = buildFileName(s.fileName, no, new Date(), memo);
+  $('fileNamePreview').textContent = buildFileName(s.fileName, no, new Date(), memo, s.camName);
 }
 
 /* ── 미리보기 오버레이 ───────────────────────────── */
@@ -253,7 +253,7 @@ function stampToCanvas(source, width, height, date, crop = { x: 0, y: 0, w: widt
 async function storeStamped(canvas, date, { allowShare = true } = {}) {
   const numberText = currentNumberText();
   const memo = s.memo.trim();
-  const name = buildFileName(s.fileName, numberText, date, memo);
+  const name = buildFileName(s.fileName, numberText, date, memo, s.camName);
   const blob = await canvasToBlob(canvas, s.quality / 100);
   const thumb = await makeThumb(canvas);
 
@@ -415,7 +415,7 @@ for (const f of DATE_FORMATS) sel.add(new Option(formatDate(sample, f), f));
 
 const fields = ['numberOn', 'current', 'start', 'step', 'pad', 'prefix', 'suffix', 'subSep', 'memoOn', 'memo',
   'margin', 'size', 'bold', 'color', 'outline', 'outlineWidth', 'outlineColor', 'box', 'boxColor', 'boxOpacity',
-  'dateOn', 'dateFormat', 'dateLayout', 'saveMode', 'keepInList', 'fileName', 'quality', 'hiRes', 'gridOn', 'levelOn'];
+  'dateOn', 'dateFormat', 'dateLayout', 'saveMode', 'keepInList', 'fileName', 'camName', 'quality', 'hiRes', 'gridOn', 'levelOn'];
 const outputs = {
   margin: (v) => v + '%', size: (v) => v + '%', outlineWidth: (v) => v, boxOpacity: (v) => v + '%', quality: (v) => v,
 };
@@ -451,6 +451,10 @@ function syncDisabled() {
   $('s-dateFormat').disabled = $('s-dateLayout').disabled = !s.dateOn;
   $('s-keepInList').disabled = s.saveMode === 'list';
   $('fileNameCustom').hidden = $('fileNameTokens').hidden = $('fileNamePreset').value !== '';
+  /* 카메라명 칸은 파일명에 {cam} 이 들어 있을 때만 */
+  $('camNameRow').hidden = $('camNameRow2').hidden = !/\{(cam|카메라)\}/.test(s.fileName);
+  /* 점검 앱 이름은 번호 4자리여야 짝이 맞는다 */
+  $('camNameWarn').hidden = !(/\{(cam|카메라)\}/.test(s.fileName) && (s.pad !== 4 || s.prefix || s.suffix || s.sameOn));
 }
 
 for (const k of fields) {

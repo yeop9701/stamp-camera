@@ -39,15 +39,17 @@ export function formatDate(d, fmt) {
   return fmt.replace(/YYYY|YY|MM|DD|HH|mm|ss/g, (t) => map[t]);
 }
 
-// 파일명 규칙: {no}/{번호} 번호, {date}/{날짜} 20261029, {time}/{시간} 143012, {memo}/{메모} 메모
+// 파일명 규칙: {no}/{번호} 번호, {date}/{날짜} 20261029, {time}/{시간} 143012, {memo}/{메모} 메모,
+//   {cam}/{카메라} 카메라명 — 외관조사·3종 체크리스트 등 점검 앱은 사진을 「카메라명+번호 4자리」(KIM0012.jpg)로 찾는다
 // 메모가 비어 있으면 {memo}와 붙어 있는 구분 기호(_ - 공백 하나)를 같이 뺀다: 날짜_번호_{memo} → 날짜_번호
-export function buildFileName(pattern, numberText, d, memo = '') {
+export function buildFileName(pattern, numberText, d, memo = '', cam = '') {
   const date = `${d.getFullYear()}${p2(d.getMonth() + 1)}${p2(d.getDate())}`;
   const time = `${p2(d.getHours())}${p2(d.getMinutes())}${p2(d.getSeconds())}`;
   let name = (pattern || '{no}')
     .replace(/\{(no|번호)\}/g, numberText)
     .replace(/\{(date|날짜)\}/g, date)
-    .replace(/\{(time|시간)\}/g, time);
+    .replace(/\{(time|시간)\}/g, time)
+    .replace(/\{(cam|카메라)\}/g, String(cam || '').trim());
   const m = String(memo || '').trim();
   if (m) name = name.replace(/\{(memo|메모)\}/g, m);
   else {

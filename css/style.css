@@ -145,6 +145,7 @@ label.range output { color: var(--accent); float: right; }
 label.range input { width: 100%; accent-color: var(--accent); margin: 6px 0 0; }
 .hint { color: var(--muted); font-size: 12px; margin: 4px 0; line-height: 1.5; word-break: break-all; }
 .hint b { color: var(--text); font-weight: normal; }
+.hint.warn { color: #e0a800; }
 .center { text-align: center; }
 .grid9 {
   display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; width: 100%; max-width: 150px; aspect-ratio: 4 / 3;

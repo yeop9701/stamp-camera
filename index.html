@@ -185,11 +185,15 @@
             <option value="{no}_{memo}_{date}">번호_메모_날짜</option>
             <option value="{date}_{time}_{no}_{memo}">날짜_시간_번호_메모</option>
             <option value="{no}_{memo}">번호_메모</option>
+            <option value="{cam}{no}">점검 앱용 : 카메라명+번호 (KIM0012)</option>
             <option value="">직접 입력…</option>
           </select></label>
         </div>
         <label id="fileNameCustom">직접 입력<input type="text" id="s-fileName" autocapitalize="off" autocomplete="off"></label>
-        <p class="hint" id="fileNameTokens">{날짜} 20261102 · {번호} A-007 · {시간} 143012 · {메모} 을(를) 넣어 쓰세요. 예: 현장1_{날짜}_{번호}_{메모}</p>
+        <p class="hint" id="fileNameTokens">{날짜} 20261102 · {번호} A-007 · {시간} 143012 · {메모} · {카메라} 카메라명 을(를) 넣어 쓰세요. 예: 현장1_{날짜}_{번호}_{메모}</p>
+        <label id="camNameRow">카메라명 (파일명 {카메라})<input type="text" id="s-camName" autocapitalize="characters" autocomplete="off" placeholder="KIM"></label>
+        <p class="hint" id="camNameRow2">외관조사·3종 체크리스트 앱은 사진을 <b>카메라명+번호 4자리</b>(KIM0012.jpg)로 찾는다. 그 앱에서 카메라 K 가 KIM 이면 여기에 KIM.</p>
+        <p class="hint warn" id="camNameWarn">⚠ 점검 앱과 짝이 맞으려면 번호가 <b>4자리</b>이고 앞·뒤 글자와 「같은 번호로 여러 장」이 없어야 한다.</p>
         <p class="hint">저장될 파일명: <b id="fileNamePreview"></b></p>
         <div class="row mid">
           <div class="cell">
