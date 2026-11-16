@@ -8,7 +8,7 @@ import { downloadBlob, shareBlob, shareFiles, canvasToBlob } from './save.js';
 import { makeZip, uniqueNames } from './zip.js';
 import { shotsCsv } from './csv.js';
 
-const APP_VERSION = '1.7.0';
+const APP_VERSION = '1.8.0';
 const $ = (id) => document.getElementById(id);
 
 let s = loadSettings();
@@ -194,8 +194,29 @@ $('btnSwitch').onclick = async () => {
   }
 };
 
+/* 같은 주소의 다른 앱(결함마킹 앱의 「스탬프 촬영」)도 이 설정의 번호·메모를 읽고 올린다.
+   이 앱이 뒤에 떠 있는 동안 번호가 바뀌었으면, 다시 볼 때(또는 다른 탭에서 바뀌는 즉시) 새로 읽는다.
+   그러지 않으면 옛 번호로 찍고 저장하면서 번호가 겹친다. */
+const SHARED_KEYS = ['current', 'sub', 'sameOn', 'memo', 'memoRecent', 'flashMode'];
+function reloadShared() {
+  const n = loadSettings();
+  const moved = n.current !== s.current || n.sub !== s.sub || n.sameOn !== s.sameOn;
+  if (!moved && n.memo === s.memo && n.flashMode === s.flashMode && JSON.stringify(n.memoRecent) === JSON.stringify(s.memoRecent)) return;
+  for (const k of SHARED_KEYS) s[k] = n[k];
+  if (moved) undoStack.length = 0;   // 되돌리기가 남이 올린 번호를 되감지 않게
+  updateNext();
+  renderOverlay();
+  applyFlash();
+  refreshListBadge();
+  if (!$('settingsSheet').hidden) fillSettingsUI();
+}
+window.addEventListener('storage', (e) => {
+  if (e.key === null || e.key === 'stampcam.settings.v1') reloadShared();
+});
+
 let resumeCamera = false;
 document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) reloadShared();
   if (document.hidden) {
     resumeCamera = camera.active;
     camera.stop();
